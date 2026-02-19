@@ -17,7 +17,7 @@ from dynamic_network_architectures.initialization.weight_init import init_last_b
 from nnunetv2.utilities.network_initialization import InitWeights_He
 from mamba_ssm import Mamba
 from dynamic_network_architectures.building_blocks.helper import maybe_convert_scalar_to_list, get_matching_pool_op
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from dynamic_network_architectures.building_blocks.residual import BasicBlockD
 
 class UpsampleLayer(nn.Module):
@@ -84,7 +84,7 @@ class MambaLayer(nn.Module):
 
         return out
 
-    @autocast(enabled=False)
+    @autocast('cuda',enabled=False)
     def forward(self, x):
         if x.dtype == torch.float16:
             x = x.type(torch.float32)
@@ -471,7 +471,11 @@ class UNetResDecoder(nn.Module):
         output = np.int64(0)
         for s in range(len(self.stages)):
             output += self.upsample_layers[s].compute_conv_feature_map_size(skip_sizes[-(s+1)])
-            output += self.stages[s].compute_conv_feature_map_size(skip_sizes[-(s+2)])
+            if isinstance(self.stages[s], nn.Sequential):
+                for seq in self.stages[s]:
+                    output += seq.compute_conv_feature_map_size(skip_sizes[-(s+1)])
+            else:
+                output += self.stages[s].compute_conv_feature_map_size(skip_sizes[-(s+1)])
 
             # output += np.prod([self.encoder.output_channels[-(s+2)], *skip_sizes[-(s+1)]], dtype=np.int64)
             if self.deep_supervision or (s == (len(self.stages) - 1)):

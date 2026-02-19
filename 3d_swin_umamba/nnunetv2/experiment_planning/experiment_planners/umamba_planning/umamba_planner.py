@@ -19,7 +19,7 @@ from nnunetv2.experiment_planning.experiment_planners.network_topology import ge
 class MambaExperimentPlanner(ExperimentPlanner):
     def __init__(self, dataset_name_or_id: Union[str, int],
                  gpu_memory_target_in_gb: float = 8,
-                 preprocessor_name: str = 'DefaultPreprocessor', plans_name: str = 'nnUNetResEncUNetPlans',
+                 preprocessor_name: str = 'DefaultPreprocessor', plans_name: str = 'MambaPlans',
                  overwrite_target_spacing: Union[List[float], Tuple[float, ...]] = None,
                  suppress_transpose: bool = False):
         super().__init__(dataset_name_or_id, gpu_memory_target_in_gb, preprocessor_name, plans_name,
@@ -29,8 +29,8 @@ class MambaExperimentPlanner(ExperimentPlanner):
         # much as possible
         self.UNet_reference_val_3d = 680000000
         self.UNet_reference_val_2d = 135000000
-        self.UNet_blocks_per_stage_encoder = (1, 3, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6)
-        self.UNet_blocks_per_stage_decoder = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+        self.UNet_blocks_per_stage_encoder = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+        self.UNet_blocks_per_stage_decoder = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
 
 
     def get_plans_for_configuration(self,
@@ -156,7 +156,7 @@ class MambaExperimentPlanner(ExperimentPlanner):
                 'kernel_sizes': conv_kernel_sizes,
                 'strides': pool_op_kernel_sizes,
                 'features_per_stage': _features_per_stage(num_stages, max_num_features),
-                'n_blocks_per_stage': self.UNet_blocks_per_stage_encoder[:num_stages],
+                'n_conv_per_stage': self.UNet_blocks_per_stage_encoder[:num_stages],
                 'n_conv_per_stage_decoder': self.UNet_blocks_per_stage_decoder[:num_stages - 1],
             })
             if _keygen(patch_size, pool_op_kernel_sizes) in _cache.keys():
