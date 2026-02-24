@@ -31,7 +31,15 @@ def get_network_from_plans(patch_size, arch_class_name, arch_kwargs, arch_kwargs
     if deep_supervision is not None:
         architecture_kwargs['deep_supervision'] = deep_supervision
 
-    if network_class.endswith("UMamba"):
+    if network_class.endswith("SwinUMamba"):
+        network = nw_class(
+            input_channels=input_channels,
+            features_per_stage=architecture_kwargs['features_per_stage'],
+            conv_op=architecture_kwargs['conv_op'],
+            num_classes=output_channels,
+            deep_supervision=architecture_kwargs['deep_supervision']
+        )
+    elif network_class.endswith("UMamba"):
         network = nw_class(
             input_size=patch_size,
             input_channels=input_channels,
