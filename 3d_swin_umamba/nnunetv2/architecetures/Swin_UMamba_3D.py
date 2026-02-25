@@ -54,7 +54,7 @@ class PatchEmbed3D(nn.Module):
         #                                                                         "Give input_size=(x, y(, z))!"
         return np.prod([self.output_dim, *[i//j for i,j in zip(input_size, self.proj.kernel_size)]], dtype=np.int64)
     
-class SwinUMamba2D(nn.Module):
+class SwinUMamba3D(nn.Module):
     def __init__(
         self,
         in_chans=1,
