@@ -84,5 +84,5 @@ class SwinUMamba3D(nn.Module):
         self.spatial_dims = spatial_dims
         
     def compute_conv_feature_map_size(self, input_size):
-        output = np.prod([self.feat_size, *[i for i in input_size]], dtype=np.int64) # stem
+        output = np.prod([*self.feat_size, *[i for i in input_size]], dtype=np.int64) # stem
         return output

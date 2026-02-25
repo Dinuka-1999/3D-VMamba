@@ -73,14 +73,14 @@ class SwinUMamba(object):
                              out_chans=num_classes,
                              feat_size=features_per_stage,
                              deep_supervision=deep_supervision,
-                             hidden_state= 768)
+                             hidden_size= 768)
       
       elif conv_op in [nn.Conv3d, nn.ConvTranspose3d]:
          return SwinUMamba3D(in_chans=input_channels, 
                              out_chans=num_classes,
                              feat_size=features_per_stage,
                              deep_supervision=deep_supervision,
-                             hidden_state= 768)
+                             hidden_size= 768)
       else:
          raise ValueError(f"conv_op must be one of {nn.Conv2d, nn.ConvTranspose2d, nn.Conv3d, nn.ConvTranspose3d}, "
                           f"but got {conv_op} instead!")

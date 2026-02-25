@@ -37,7 +37,7 @@ def get_network_from_plans(patch_size, arch_class_name, arch_kwargs, arch_kwargs
             features_per_stage=architecture_kwargs['features_per_stage'],
             conv_op=architecture_kwargs['conv_op'],
             num_classes=output_channels,
-            deep_supervision=architecture_kwargs['deep_supervision']
+            deep_supervision=architecture_kwargs['deep_supervision'] if 'deep_supervision' in architecture_kwargs else True
         )
     elif network_class.endswith("UMamba"):
         network = nw_class(
