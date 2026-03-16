@@ -53,7 +53,7 @@ def get_network_from_plans(patch_size, arch_class_name, arch_kwargs, arch_kwargs
             **architecture_kwargs
         )
 
-    if hasattr(network, 'initialize') and allow_init:
+    if hasattr(network, 'initialize') and allow_init: #Not required, default for the Unets.
         network.apply(network.initialize)
     
     return network

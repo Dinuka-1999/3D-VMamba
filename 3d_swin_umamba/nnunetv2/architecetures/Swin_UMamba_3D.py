@@ -723,7 +723,7 @@ class SwinUMamba3D(nn.Module):
         output+= np.prod([self.out_chans, *input_size_0], dtype=np.int64) # out_layer
         return output
 
-def get_swin_umamba_from_plans(
+def get_swin_umamba_3D_from_plans(
     plans_manager: PlansManager,
     dataset_json: dict,
     configuration_manager: ConfigurationManager,

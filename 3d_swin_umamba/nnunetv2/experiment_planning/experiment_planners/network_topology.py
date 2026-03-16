@@ -106,3 +106,42 @@ def get_pool_and_conv_props(spacing, patch_size, min_feature_map_size, max_numpo
     # we need to add one more conv_kernel_size for the bottleneck. We always use 3x3(x3) conv here
     conv_kernel_sizes.append([3]*dim)
     return num_pool_per_axis, _to_tuple(pool_op_kernel_sizes), _to_tuple(conv_kernel_sizes), tuple(patch_size), must_be_divisible_by
+
+def get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool):
+
+    dim = len(spacing)
+    
+    current_spacing = deepcopy(list(spacing))
+    current_size = deepcopy(list(patch_size))
+
+    num_pool_per_axis = [0] * dim
+    
+    for r in range(5):
+        # exclude axes that we cannot pool further because of min_feature_map_size constraint
+        valid_axes_for_pool = [i for i in range(dim) if current_size[i] >= 2*min_feature_map_size]
+        if len(valid_axes_for_pool) < 3:
+            break
+
+        for v in valid_axes_for_pool:
+            num_pool_per_axis[v] += 1 
+            current_size[v] = np.ceil(current_size[v] / 2)
+    
+    if num_pool_per_axis[0] != 5:
+        raise ValueError("num_pool_per_axis[0] should be 5 for swin mamba")
+    
+    must_be_divisible_by = get_shape_must_be_divisible_by(5)
+    patch_size = pad_shape(patch_size, must_be_divisible_by)
+
+    return num_pool_per_axis,  tuple(patch_size), must_be_divisible_by
+
+if __name__ == "__main__":
+    spacing = [0.36, 0.36, 1]
+    patch_size = [128, 128, 128]
+    min_feature_map_size = 4
+    max_numpool = 999
+
+    num_pool_per_axis,  patch_size, must_be_divisible_by = get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
+    print(num_pool_per_axis)
+    print(patch_size)
+    print(must_be_divisible_by)
+    

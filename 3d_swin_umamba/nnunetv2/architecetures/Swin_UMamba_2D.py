@@ -625,6 +625,7 @@ class SwinUMamba2D(nn.Module):
 
         # deep supervision support
         self.deep_supervision = deep_supervision
+        print(f"Deep supervision: {self.deep_supervision}")
         self.out_layers = nn.ModuleList()
         for i in range(4):
             self.out_layers.append(UnetOutBlock(
@@ -727,7 +728,7 @@ def load_pretrained_ckpt(
     return model
 
 
-def get_swin_umamba_from_plans(
+def get_swin_umamba_2D_from_plans(
     plans_manager: PlansManager,
     dataset_json: dict,
     configuration_manager: ConfigurationManager,

@@ -14,7 +14,7 @@ from torch import nn
 
 from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
 
-from nnunetv2.experiment_planning.experiment_planners.network_topology import get_pool_and_conv_props
+from nnunetv2.experiment_planning.experiment_planners.network_topology import get_pool_and_conv_props, get_swin_mamba_props
 
 class MambaExperimentPlanner(ExperimentPlanner):
     def __init__(self, dataset_name_or_id: Union[str, int],
@@ -265,12 +265,11 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
 
         # use that to get the network topology. Note that this changes the patch_size depending on the number of
         # pooling operations (must be divisible by 2**num_pool in each axis)
-        network_num_pool_per_axis, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, \
-        shape_must_be_divisible_by = get_pool_and_conv_props(spacing, initial_patch_size,
+        network_num_pool_per_axis, patch_size, shape_must_be_divisible_by = get_swin_mamba_props(spacing, initial_patch_size,
                                                              self.UNet_featuremap_min_edge_length,
                                                              999999)   # mamba is not used
-        num_stages = len(pool_op_kernel_sizes)
-
+        # num_stages = len(pool_op_kernel_sizes)
+        pool_op_kernel_sizes = (2,2,2)
         norm = get_matching_instancenorm(unet_conv_op)
         architecture_kwargs = {
             'network_class_name': self.UNet_class.__module__ + '.' + self.UNet_class.__name__,
@@ -298,55 +297,55 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
         # adapt for our vram target
         reference = (self.UNet_reference_val_2d if len(spacing) == 2 else self.UNet_reference_val_3d) * \
                     (self.UNet_vram_target_GB / self.UNet_reference_val_corresp_GB)
-        if len(spacing) != 3:
-            while estimate > reference:
-                # print(patch_size)
-                # patch size seems to be too large, so we need to reduce it. Reduce the axis that currently violates the
-                # aspect ratio the most (that is the largest relative to median shape)
-                axis_to_be_reduced = np.argsort([i / j for i, j in zip(patch_size, median_shape[:len(spacing)])])[-1]
+        
+        while estimate > reference:
+            # print(patch_size)
+            # patch size seems to be too large, so we need to reduce it. Reduce the axis that currently violates the
+            # aspect ratio the most (that is the largest relative to median shape)
+            axis_to_be_reduced = np.argsort([i / j for i, j in zip(patch_size, median_shape[:len(spacing)])])[-1]
 
-                # we cannot simply reduce that axis by shape_must_be_divisible_by[axis_to_be_reduced] because this
-                # may cause us to skip some valid sizes, for example shape_must_be_divisible_by is 64 for a shape of 256.
-                # If we subtracted that we would end up with 192, skipping 224 which is also a valid patch size
-                # (224 / 2**5 = 7; 7 < 2 * self.UNet_featuremap_min_edge_length(4) so it's valid). So we need to first
-                # subtract shape_must_be_divisible_by, then recompute it and then subtract the
-                # recomputed shape_must_be_divisible_by. Annoying.
-                patch_size = list(patch_size)
-                tmp = deepcopy(patch_size)
-                tmp[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
-                _, _, _, _, shape_must_be_divisible_by = \
-                    get_pool_and_conv_props(spacing, tmp,
-                                            self.UNet_featuremap_min_edge_length,
-                                            999999)
-                patch_size[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
+            # we cannot simply reduce that axis by shape_must_be_divisible_by[axis_to_be_reduced] because this
+            # may cause us to skip some valid sizes, for example shape_must_be_divisible_by is 64 for a shape of 256.
+            # If we subtracted that we would end up with 192, skipping 224 which is also a valid patch size
+            # (224 / 2**5 = 7; 7 < 2 * self.UNet_featuremap_min_edge_length(4) so it's valid). So we need to first
+            # subtract shape_must_be_divisible_by, then recompute it and then subtract the
+            # recomputed shape_must_be_divisible_by. Annoying.
+            patch_size = list(patch_size)
+            tmp = deepcopy(patch_size)
+            tmp[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
+            _, _, shape_must_be_divisible_by = \
+                get_swin_mamba_props(spacing, tmp,
+                                        self.UNet_featuremap_min_edge_length,
+                                        999999)
+            patch_size[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
 
-                # now recompute topology
-                network_num_pool_per_axis, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, \
-                shape_must_be_divisible_by = get_pool_and_conv_props(spacing, patch_size,
-                                                                    self.UNet_featuremap_min_edge_length,
-                                                                    999999)
+            # now recompute topology
+            network_num_pool_per_axis, patch_size, \
+            shape_must_be_divisible_by = get_swin_mamba_props(spacing, patch_size,
+                                                                self.UNet_featuremap_min_edge_length,
+                                                                999999)
 
-                num_stages = len(pool_op_kernel_sizes)
-                # architecture_kwargs['arch_kwargs'].update({
-                #     'n_stages': num_stages,
-                #     'kernel_sizes': conv_kernel_sizes,
-                #     'strides': pool_op_kernel_sizes,
-                #     'features_per_stage': _features_per_stage(num_stages, max_num_features),
-                #     'n_conv_per_stage': self.UNet_blocks_per_stage_encoder[:num_stages],
-                #     'n_conv_per_stage_decoder': self.UNet_blocks_per_stage_decoder[:num_stages - 1],
-                # })
-                if _keygen(patch_size, pool_op_kernel_sizes) in _cache.keys():
-                    estimate = _cache[_keygen(patch_size, pool_op_kernel_sizes)]
-                else:
-                    estimate = self.static_estimate_VRAM_usage(
-                        patch_size,
-                        num_input_channels,
-                        len(self.dataset_json['labels'].keys()),
-                        architecture_kwargs['network_class_name'],
-                        architecture_kwargs['arch_kwargs'],
-                        architecture_kwargs['_kw_requires_import'],
-                    )
-                    _cache[_keygen(patch_size, pool_op_kernel_sizes)] = estimate
+            # num_stages = len(pool_op_kernel_sizes)
+            # architecture_kwargs['arch_kwargs'].update({
+            #     'n_stages': num_stages,
+            #     'kernel_sizes': conv_kernel_sizes,
+            #     'strides': pool_op_kernel_sizes,
+            #     'features_per_stage': _features_per_stage(num_stages, max_num_features),
+            #     'n_conv_per_stage': self.UNet_blocks_per_stage_encoder[:num_stages],
+            #     'n_conv_per_stage_decoder': self.UNet_blocks_per_stage_decoder[:num_stages - 1],
+            # })
+            if _keygen(patch_size, pool_op_kernel_sizes) in _cache.keys():
+                estimate = _cache[_keygen(patch_size, pool_op_kernel_sizes)]
+            else:
+                estimate = self.static_estimate_VRAM_usage(
+                    patch_size,
+                    num_input_channels,
+                    len(self.dataset_json['labels'].keys()),
+                    architecture_kwargs['network_class_name'],
+                    architecture_kwargs['arch_kwargs'],
+                    architecture_kwargs['_kw_requires_import'],
+                )
+                _cache[_keygen(patch_size, pool_op_kernel_sizes)] = estimate
 
         # alright now let's determine the batch size. This will give self.UNet_min_batch_size if the while loop was
         # executed. If not, additional vram headroom is used to increase batch size
