@@ -63,6 +63,7 @@ class SwinUMamba(object):
                features_per_stage: Union[int, List[int], Tuple[int, ...]],
                conv_op: Type[_ConvNd],
                num_classes: int,  
+               strides: Union[int, List[int], Tuple[int, ...]],
                deep_supervision: bool = False
                ):
    
@@ -72,6 +73,7 @@ class SwinUMamba(object):
          return SwinUMamba2D(in_chans=input_channels, 
                              out_chans=num_classes,
                              feat_size=features_per_stage,
+                             strides = strides,
                              deep_supervision=deep_supervision,
                              hidden_size= 768)
       
@@ -79,6 +81,7 @@ class SwinUMamba(object):
          return SwinUMamba3D(in_chans=input_channels, 
                              out_chans=num_classes,
                              feat_size=features_per_stage,
+                             strides = strides,
                              deep_supervision=deep_supervision,
                              hidden_size= 768)
       else:

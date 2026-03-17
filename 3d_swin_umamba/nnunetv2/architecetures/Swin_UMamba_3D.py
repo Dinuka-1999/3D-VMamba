@@ -63,11 +63,12 @@ class PatchMerging3D(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, dim, norm_layer=nn.LayerNorm, stride= [2,2,2]):
         super().__init__()
         self.dim = dim
         self.reduction = nn.Linear(8 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(8 * dim)
+        self.stride = stride
 
     def forward(self, x):
         B, D, H, W, C = x.shape
@@ -108,7 +109,7 @@ class PatchMerging3D(nn.Module):
         return x
     
     def compute_conv_feature_map_size(self, input_size):
-        return np.prod([self.dim * 2, input_size[0]//2, input_size[1]//2, input_size[2]//2], dtype=np.int64)
+        return np.prod([self.dim * 2, input_size[0]//self.stride[0], input_size[1]//self.stride[1], input_size[2]//self.stride[2]], dtype=np.int64)
 
 
 class SS3D(nn.Module):
@@ -417,7 +418,7 @@ class VSSLayer(nn.Module):
     
 
 class VSSMEncoder(nn.Module):
-    def __init__(self, patch_size=4, in_chans=3, depths=[2, 2, 9, 2], 
+    def __init__(self, patch_size=4, in_chans=3, strides = [2,2,2], depths=[2, 2, 9, 2], 
                  dims=[96, 192, 384, 768], d_state=16, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2,
                  norm_layer=nn.LayerNorm, patch_norm=True,
                  use_checkpoint=False, **kwargs):
@@ -428,6 +429,7 @@ class VSSMEncoder(nn.Module):
             dims = [int(dims * 2 ** i_layer) for i_layer in range(self.num_layers)]
         self.embed_dim = dims[0]
         self.num_features = dims[-1]
+        self.strides = strides
         self.dims = dims
         self.patch_size = (patch_size, patch_size, patch_size) if isinstance(patch_size, int) else patch_size
         self.patch_embed = PatchEmbed3D(patch_size=patch_size, in_chans=in_chans, embed_dim=self.embed_dim,
@@ -459,7 +461,7 @@ class VSSMEncoder(nn.Module):
             )
             self.layers.append(layer)
             if i_layer < self.num_layers - 1:
-                self.downsamples.append(PatchMerging3D(dim=dims[i_layer], norm_layer=norm_layer)) # i_layer = 0,1,2
+                self.downsamples.append(PatchMerging3D(dim=dims[i_layer], norm_layer=norm_layer, strides=strides[i_layer])) # i_layer = 0,1,2
 
         self.apply(self._init_weights)
 
@@ -516,7 +518,7 @@ class VSSMEncoder(nn.Module):
             output += self.layers[s].compute_conv_feature_map_size(input_size)
             if s < len(self.downsamples):
                 output += self.downsamples[s].compute_conv_feature_map_size(input_size)
-                input_size = [i//2 for i in input_size]
+                input_size = [i//j for i,j in zip(input_size, self.strides[s])]
                 input_sizes.append(input_size)
         return output, input_sizes
     
@@ -526,6 +528,7 @@ class SwinUMamba3D(nn.Module):
         in_chans=1,
         out_chans=13,
         feat_size=[48, 96, 192, 384, 768],
+        strides=[2,2,2,2,2],
         drop_path_rate=0,
         layer_scale_init_value=1e-6,
         hidden_size: int = 768,
@@ -542,13 +545,13 @@ class SwinUMamba3D(nn.Module):
         self.drop_path_rate = drop_path_rate
         self.feat_size = feat_size
         self.layer_scale_init_value = layer_scale_init_value
-
+        self.strides = strides
         self.stem = nn.Sequential(
-              nn.Conv3d(in_chans, feat_size[0], kernel_size=7, stride=2, padding=3),
+              nn.Conv3d(in_chans, feat_size[0], kernel_size=7, stride=strides[0], padding=3),
               nn.InstanceNorm3d(feat_size[0], eps=1e-5, affine=True),
         )
         self.spatial_dims = spatial_dims
-        self.vssm_encoder = VSSMEncoder(patch_size=2, in_chans=feat_size[0])
+        self.vssm_encoder = VSSMEncoder(patch_size=strides[1], in_chans=feat_size[0], strides=strides[2:])
         self.encoder1 = UnetrBasicBlock(
             spatial_dims=spatial_dims,
             in_channels=self.in_chans,
