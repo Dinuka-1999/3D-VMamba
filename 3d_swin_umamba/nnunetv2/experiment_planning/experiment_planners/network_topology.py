@@ -113,35 +113,62 @@ def get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
     
     current_spacing = deepcopy(list(spacing))
     current_size = deepcopy(list(patch_size))
-
-    num_pool_per_axis = [0] * dim
     
+    pool_op_kernel_sizes = []
+    num_pool_per_axis = [0] * dim
+    # print("spacing", spacing)
+    # print("patch_size", patch_size)
     for r in range(5):
         # exclude axes that we cannot pool further because of min_feature_map_size constraint
         valid_axes_for_pool = [i for i in range(dim) if current_size[i] >= 2*min_feature_map_size]
-        if len(valid_axes_for_pool) < 3:
+        if len(valid_axes_for_pool) < 1:
+            raise ValueError(f"Not enough valid axes for pooling. patch size is {patch_size}")
+
+        spacings_of_axes = [current_spacing[i] for i in valid_axes_for_pool]
+        # find axis that are within factor of 2 within smallest spacing
+        min_spacing_of_valid = min(spacings_of_axes)
+        valid_axes_for_pool = [i for i in valid_axes_for_pool if current_spacing[i] / min_spacing_of_valid < 2]
+
+        if len(valid_axes_for_pool) == 1:
+            if current_size[valid_axes_for_pool[0]] >= 3 * min_feature_map_size:
+                pass
+            else:
+                break
+        if len(valid_axes_for_pool) < 1:
             break
 
+        other_axes = [i for i in range(dim) if i not in valid_axes_for_pool]
+
+        pool_kernel_sizes = [0] * dim
         for v in valid_axes_for_pool:
+            pool_kernel_sizes[v] = 2
             num_pool_per_axis[v] += 1 
+            current_spacing[v] *= 2
             current_size[v] = np.ceil(current_size[v] / 2)
-    
-    if num_pool_per_axis[0] != 5:
-        raise ValueError("num_pool_per_axis[0] should be 5 for swin mamba")
-    
-    must_be_divisible_by = get_shape_must_be_divisible_by(5)
+        for nv in other_axes:
+            pool_kernel_sizes[nv] = 1
+
+        pool_op_kernel_sizes.append(pool_kernel_sizes)
+
+    # if num_pool_per_axis[0] != 5:
+    #     raise ValueError("num_pool_per_axis[0] should be 5 for swin mamba")
+    def _to_tuple(lst):
+        return tuple(_to_tuple(i) if isinstance(i, list) else i for i in lst)
+
+    must_be_divisible_by = get_shape_must_be_divisible_by(num_pool_per_axis)
     patch_size = pad_shape(patch_size, must_be_divisible_by)
 
-    return num_pool_per_axis,  tuple(patch_size), must_be_divisible_by
+    return num_pool_per_axis,  tuple(patch_size), must_be_divisible_by, _to_tuple(pool_op_kernel_sizes)
 
 if __name__ == "__main__":
-    spacing = [0.36, 0.36, 1]
-    patch_size = [128, 128, 128]
+    spacing = [1, 0.27, 0.27]
+    patch_size = [109,496,496]
     min_feature_map_size = 4
     max_numpool = 999
 
-    num_pool_per_axis,  patch_size, must_be_divisible_by = get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
+    num_pool_per_axis,  patch_size, must_be_divisible_by, pool_op_kernel_sizes = get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
     print(num_pool_per_axis)
     print(patch_size)
     print(must_be_divisible_by)
+    print(pool_op_kernel_sizes)
     

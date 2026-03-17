@@ -265,16 +265,21 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
 
         # use that to get the network topology. Note that this changes the patch_size depending on the number of
         # pooling operations (must be divisible by 2**num_pool in each axis)
-        network_num_pool_per_axis, patch_size, shape_must_be_divisible_by = get_swin_mamba_props(spacing, initial_patch_size,
+        # print("spacing", spacing)
+        network_num_pool_per_axis, patch_size, shape_must_be_divisible_by, pool_op_kernel_sizes = get_swin_mamba_props(spacing, initial_patch_size,
                                                              self.UNet_featuremap_min_edge_length,
                                                              999999)   # mamba is not used
         # num_stages = len(pool_op_kernel_sizes)
-        pool_op_kernel_sizes = (2,2,2)
+        # print("network_num_pool_per_axis", network_num_pool_per_axis)
+        # print("patch_size", patch_size)
+        # print("shape_must_be_divisible_by", shape_must_be_divisible_by)
+        # print("pool_op_kernel_sizes", pool_op_kernel_sizes)
         norm = get_matching_instancenorm(unet_conv_op)
         architecture_kwargs = {
             'network_class_name': self.UNet_class.__module__ + '.' + self.UNet_class.__name__,
             'arch_kwargs': {
                 'features_per_stage': [48, 96, 192, 384, 768],
+                'strides': pool_op_kernel_sizes,
                 'conv_op': unet_conv_op.__module__ + '.' + unet_conv_op.__name__,
             },
             '_kw_requires_import': ('conv_op',),
@@ -303,7 +308,7 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
             # patch size seems to be too large, so we need to reduce it. Reduce the axis that currently violates the
             # aspect ratio the most (that is the largest relative to median shape)
             axis_to_be_reduced = np.argsort([i / j for i, j in zip(patch_size, median_shape[:len(spacing)])])[-1]
-
+            # print("Reducing axis", axis_to_be_reduced)
             # we cannot simply reduce that axis by shape_must_be_divisible_by[axis_to_be_reduced] because this
             # may cause us to skip some valid sizes, for example shape_must_be_divisible_by is 64 for a shape of 256.
             # If we subtracted that we would end up with 192, skipping 224 which is also a valid patch size
@@ -317,23 +322,19 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
                 get_swin_mamba_props(spacing, tmp,
                                         self.UNet_featuremap_min_edge_length,
                                         999999)
+            # print("we are hre")
             patch_size[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
-
+            # print("New patch size", patch_size)
             # now recompute topology
             network_num_pool_per_axis, patch_size, \
-            shape_must_be_divisible_by = get_swin_mamba_props(spacing, patch_size,
+            shape_must_be_divisible_by, pool_op_kernel_sizes = get_swin_mamba_props(spacing, patch_size,
                                                                 self.UNet_featuremap_min_edge_length,
                                                                 999999)
 
             # num_stages = len(pool_op_kernel_sizes)
-            # architecture_kwargs['arch_kwargs'].update({
-            #     'n_stages': num_stages,
-            #     'kernel_sizes': conv_kernel_sizes,
-            #     'strides': pool_op_kernel_sizes,
-            #     'features_per_stage': _features_per_stage(num_stages, max_num_features),
-            #     'n_conv_per_stage': self.UNet_blocks_per_stage_encoder[:num_stages],
-            #     'n_conv_per_stage_decoder': self.UNet_blocks_per_stage_decoder[:num_stages - 1],
-            # })
+            architecture_kwargs['arch_kwargs'].update({
+                'strides': pool_op_kernel_sizes
+            })
             if _keygen(patch_size, pool_op_kernel_sizes) in _cache.keys():
                 estimate = _cache[_keygen(patch_size, pool_op_kernel_sizes)]
             else:
