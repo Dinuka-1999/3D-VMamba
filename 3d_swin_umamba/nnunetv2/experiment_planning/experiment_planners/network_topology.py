@@ -129,13 +129,13 @@ def get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
         min_spacing_of_valid = min(spacings_of_axes)
         valid_axes_for_pool = [i for i in valid_axes_for_pool if current_spacing[i] / min_spacing_of_valid < 2]
 
-        if len(valid_axes_for_pool) == 1:
-            if current_size[valid_axes_for_pool[0]] >= 3 * min_feature_map_size:
-                pass
-            else:
-                break
-        if len(valid_axes_for_pool) < 1:
-            break
+        # if len(valid_axes_for_pool) == 1:
+        #     if current_size[valid_axes_for_pool[0]] >= 3 * min_feature_map_size:
+        #         pass
+        #     else:
+        #         break
+        # if len(valid_axes_for_pool) < 1:
+        #     break
 
         other_axes = [i for i in range(dim) if i not in valid_axes_for_pool]
 

@@ -63,12 +63,12 @@ class PatchMerging3D(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, norm_layer=nn.LayerNorm, stride= [2,2,2]):
+    def __init__(self, dim, norm_layer=nn.LayerNorm, strides= [2,2,2]):
         super().__init__()
         self.dim = dim
         self.reduction = nn.Linear(8 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(8 * dim)
-        self.stride = stride
+        self.stride = strides
 
     def forward(self, x):
         B, D, H, W, C = x.shape

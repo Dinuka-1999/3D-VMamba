@@ -318,7 +318,7 @@ class SwinMambaExperimentPlanner(ExperimentPlanner):
             patch_size = list(patch_size)
             tmp = deepcopy(patch_size)
             tmp[axis_to_be_reduced] -= shape_must_be_divisible_by[axis_to_be_reduced]
-            _, _, shape_must_be_divisible_by = \
+            _, _, shape_must_be_divisible_by,_= \
                 get_swin_mamba_props(spacing, tmp,
                                         self.UNet_featuremap_min_edge_length,
                                         999999)

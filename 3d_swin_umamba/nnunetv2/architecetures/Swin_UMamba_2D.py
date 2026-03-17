@@ -663,7 +663,7 @@ class SwinUMamba2D(nn.Module):
 
         # deep supervision support
         self.deep_supervision = deep_supervision
-        print(f"Deep supervision: {self.deep_supervision}")
+        # print(f"Deep supervision: {self.deep_supervision}")
         self.out_layers = nn.ModuleList()
         for i in range(4):
             self.out_layers.append(UnetOutBlock(
