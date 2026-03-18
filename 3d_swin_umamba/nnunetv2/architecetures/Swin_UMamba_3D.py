@@ -66,7 +66,9 @@ class PatchMerging3D(nn.Module):
     def __init__(self, dim, norm_layer=nn.LayerNorm, strides= [2,2,2]):
         super().__init__()
         self.dim = dim
-        self.reduction = nn.Linear(8 * dim, 2 * dim, bias=False)
+        self.reduction_8 = nn.Linear(8 * dim, 2 * dim, bias=False)
+        self.reduction_4 = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.reduction_2 = nn.Linear(2 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(8 * dim)
         self.stride = strides
 
@@ -74,37 +76,123 @@ class PatchMerging3D(nn.Module):
         B, D, H, W, C = x.shape
         
         SHAPE_FIX = [-1, -1, -1]
-        if (W % 2 != 0) or (H % 2 != 0) or (D % 2 != 0):
+        if (W % self.stride[2] != 0) or (H % self.stride[1] != 0) or (D % self.stride[0] != 0):
             print(f"Warning, x.shape {x.shape} is not match even ===========", flush=True)
-            SHAPE_FIX[0] = D // 2
-            SHAPE_FIX[1] = H // 2
-            SHAPE_FIX[2] = W // 2
+            SHAPE_FIX[0] = D // self.stride[0]
+            SHAPE_FIX[1] = H // self.stride[1]
+            SHAPE_FIX[2] = W // self.stride[2]
 
-        x0 = x[:, 0::2, 0::2, 0::2, :]  # B D/2 H/2 W/2 C
-        x1 = x[:, 1::2, 0::2, 0::2, :]  # B D/2 H/2 W/2 C
-        x2 = x[:, 0::2, 1::2, 0::2, :]  # B D/2 H/2 W/2 C
-        x3 = x[:, 1::2, 1::2, 0::2, :]  # B D/2 H/2 W/2 C
-        x4 = x[:, 0::2, 0::2, 1::2, :]  # B D/2 H/2 W/2 C
-        x5 = x[:, 1::2, 0::2, 1::2, :]  # B D/2 H/2 W/2 C
-        x6 = x[:, 0::2, 1::2, 1::2, :]  # B D/2 H/2 W/2 C
-        x7 = x[:, 1::2, 1::2, 1::2, :]  # B D/2 H/2 W/2 C
+        # [2,2,1], [1,1,2], [1,2,1], [2,1,1]
+        if self.stride == [2,2,2]:
+            x0 = x[:, 0::2, 0::2, 0::2, :]  # B D/2 H/2 W/2 C
+            x1 = x[:, 1::2, 0::2, 0::2, :]  # B D/2 H/2 W/2 C
+            x2 = x[:, 0::2, 1::2, 0::2, :]  # B D/2 H/2 W/2 C
+            x3 = x[:, 1::2, 1::2, 0::2, :]  # B D/2 H/2 W/2 C
+            x4 = x[:, 0::2, 0::2, 1::2, :]  # B D/2 H/2 W/2 C
+            x5 = x[:, 1::2, 0::2, 1::2, :]  # B D/2 H/2 W/2 C
+            x6 = x[:, 0::2, 1::2, 1::2, :]  # B D/2 H/2 W/2 C
+            x7 = x[:, 1::2, 1::2, 1::2, :]  # B D/2 H/2 W/2 C
 
-        if SHAPE_FIX[0] > 0:
-            x0 = x0[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x1 = x1[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x2 = x2[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x3 = x3[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x4 = x4[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x5 = x5[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x6 = x6[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
-            x7 = x7[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x1 = x1[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x2 = x2[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x3 = x3[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x4 = x4[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x5 = x5[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x6 = x6[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x7 = x7[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :SHAPE_FIX[2], :]
 
 
-        x = torch.cat([x0, x1, x2, x3, x4, x5, x6, x7], -1)  # B D/2 H/2 W/2 8*C
-        x = x.view(B, D//2, H//2, W//2, 8 * C)  # B D/2*H/2*W/2 8*C
+            x = torch.cat([x0, x1, x2, x3, x4, x5, x6, x7], -1)  # B D/2 H/2 W/2 8*C
+            x = x.view(B, D//2, H//2, W//2, 8 * C)  # B D/2*H/2*W/2 8*C
 
-        x = self.norm(x)
-        x = self.reduction(x)
+            x = self.norm(x)
+            x = self.reduction_8(x)
+
+        elif self.stride == [1,2,2]:
+            x0 = x[:, :, 0::2, 0::2, :]  # B D H/2 W/2 C
+            x1 = x[:, :, 1::2, 0::2, :]  # B D H/2 W/2 C
+            x2 = x[:, :, 0::2, 1::2, :]  # B D H/2 W/2 C
+            x3 = x[:, :, 1::2, 1::2, :]  # B D H/2 W/2 C
+
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :, :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x1 = x1[:, :, :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x2 = x2[:, :, :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+                x3 = x3[:, :, :SHAPE_FIX[1], :SHAPE_FIX[2], :]
+
+            x = torch.cat([x0, x1, x2, x3], -1)  # B D H/2 W/2 4*C
+            x = x.view(B, D, H//2, W//2, 4 * C)  # B D H/2 W/2 4*C
+            x = self.norm(x)
+            x = self.reduction_4(x)
+
+        elif self.stride == [2,1,2]:
+            x0 = x[:, 0::2, :, 0::2, :]  # B D/2 H W/2 C
+            x1 = x[:, 1::2, :, 0::2, :]  # B D/2 H W/2 C
+            x2 = x[:, 0::2, :, 1::2, :]  # B D/2 H W/2 C
+            x3 = x[:, 1::2, :, 1::2, :]  # B D/2 H W/2 C
+
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :SHAPE_FIX[0], :, :SHAPE_FIX[2], :]
+                x1 = x1[:, :SHAPE_FIX[0], :, :SHAPE_FIX[2], :]
+                x2 = x2[:, :SHAPE_FIX[0], :, :SHAPE_FIX[2], :]
+                x3 = x3[:, :SHAPE_FIX[0], :, :SHAPE_FIX[2], :]
+
+            x = torch.cat([x0, x1, x2, x3], -1)  # B D/2 H W/2 4*C
+            x = x.view(B, D//2, H, W//2, 4 * C)  # B D/2 H W/2 4*C
+            x = self.norm(x)
+            x = self.reduction_4(x)
+        
+        elif self.stride == [2,2,1]:
+            x0 = x[:, 0::2, 0::2, :, :]  # B D/2 H/2 W C
+            x1 = x[:, 1::2, 0::2, :, :]  # B D/2 H/2 W C
+            x2 = x[:, 0::2, 1::2, :, :]  # B D/2 H/2 W C
+            x3 = x[:, 1::2, 1::2, :, :]  # B D/2 H/2 W C
+
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :, :]
+                x1 = x1[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :, :]
+                x2 = x2[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :, :]
+                x3 = x3[:, :SHAPE_FIX[0], :SHAPE_FIX[1], :, :]
+
+            x = torch.cat([x0, x1, x2, x3], -1)  # B D/2 H/2 W 4*C
+            x = x.view(B, D//2, H//2, W, 4 * C)  # B D/2 H/2 W 4*C
+            x = self.norm(x)
+            x = self.reduction_4(x)
+        
+        elif self.stride == [1,1,2]:
+            x0 = x[:, :, :, 0::2, :]  # B D H W/2 C
+            x1 = x[:, :, :, 1::2, :]  # B D H W/2 C
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :, :, :SHAPE_FIX[2], :]
+                x1 = x1[:, :, :, :SHAPE_FIX[2], :]
+            x = torch.cat([x0, x1], -1)  # B D H W/2 2*C
+            x = x.view(B, D, H, W//2, 2 * C)  # B D H W/2 2*C
+            x = self.norm(x)
+            x = self.reduction_2(x)
+        
+        elif self.stride == [1,2,1]:
+            x0 = x[:, :, 0::2, :, :]  # B D H/2 W C
+            x1 = x[:, :, 1::2, :, :]  # B D H/2 W C
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :, :SHAPE_FIX[1], :, :]
+                x1 = x1[:, :, :SHAPE_FIX[1], :, :]
+            x = torch.cat([x0, x1], -1)  # B D H/2 W 2*C
+            x = x.view(B, D, H//2, W, 2 * C)  # B D H/2 W 2*C
+            x = self.norm(x)
+            x = self.reduction_2(x)
+
+        elif self.stride == [2,1,1]:
+            x0 = x[:, 0::2, :, :, :]  # B D/2 H W C
+            x1 = x[:, 1::2, :, :, :]  # B D/2 H W C
+            if SHAPE_FIX[0] > 0:
+                x0 = x0[:, :SHAPE_FIX[0], :, :, :]
+                x1 = x1[:, :SHAPE_FIX[0], :, :, :]
+            x = torch.cat([x0, x1], -1)  # B D/2 H W 2*C
+            x = x.view(B, D//2, H, W, 2 * C)  # B D/2 H W 2*C
+            x = self.norm(x)
+            x = self.reduction_2(x)
 
         return x
     
@@ -412,8 +500,8 @@ class VSSLayer(nn.Module):
         output = np.int64(0)
         for blk in self.blocks:
             output += blk.compute_conv_feature_map_size(input_size)
-        if self.downsample is not None:
-            output += self.downsample.compute_conv_feature_map_size(input_size)
+        # if self.downsample is not None:
+        #     output += self.downsample.compute_conv_feature_map_size(input_size)
         return output
     
 
@@ -604,7 +692,7 @@ class SwinUMamba3D(nn.Module):
             in_channels=self.hidden_size,
             out_channels=self.feat_size[4],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-1],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -614,7 +702,7 @@ class SwinUMamba3D(nn.Module):
             in_channels=self.hidden_size,
             out_channels=self.feat_size[3],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-2],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -623,7 +711,7 @@ class SwinUMamba3D(nn.Module):
             in_channels=self.feat_size[3],
             out_channels=self.feat_size[2],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-3],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -632,7 +720,7 @@ class SwinUMamba3D(nn.Module):
             in_channels=self.feat_size[2],
             out_channels=self.feat_size[1],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-4],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -641,7 +729,7 @@ class SwinUMamba3D(nn.Module):
             in_channels=self.feat_size[1],
             out_channels=self.feat_size[0],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-5],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -704,10 +792,10 @@ class SwinUMamba3D(nn.Module):
             param.requires_grad = True
 
     def compute_conv_feature_map_size(self, input_size):
-        output= np.prod([self.feat_size[0], *[i//2 for i in input_size]], dtype=np.int64) #stem
+        output= np.prod([self.feat_size[0], *[i//j for i,j in zip(input_size,self.strides[0])]], dtype=np.int64) #stem
         output += np.prod([self.feat_size[0],*[i for i in input_size]], dtype=np.int64)*3 # encoder1
         input_size_0= [i for i in input_size]
-        input_size = [i//2 for i in input_size] # after stem
+        input_size = [i//j for i, j in zip(input_size, self.strides[0])] # after stem
         vssm_output, vssm_output_sizes = self.vssm_encoder.compute_conv_feature_map_size(input_size) 
         output += vssm_output
 

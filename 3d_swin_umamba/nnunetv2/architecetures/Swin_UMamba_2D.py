@@ -417,8 +417,8 @@ class VSSLayer(nn.Module):
         output = np.int64(0)
         for blk in self.blocks:
             output += blk.compute_conv_feature_map_size(input_size)
-        if self.downsample is not None:
-            output += self.downsample.compute_conv_feature_map_size(input_size)
+        # if self.downsample is not None:
+        #     output += self.downsample.compute_conv_feature_map_size(input_size)
         return output
 
 
@@ -610,7 +610,7 @@ class SwinUMamba2D(nn.Module):
             in_channels=self.hidden_size,
             out_channels=self.feat_size[4],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-1],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -620,7 +620,7 @@ class SwinUMamba2D(nn.Module):
             in_channels=self.hidden_size,
             out_channels=self.feat_size[3],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-2],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -629,7 +629,7 @@ class SwinUMamba2D(nn.Module):
             in_channels=self.feat_size[3],
             out_channels=self.feat_size[2],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-3],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -638,7 +638,7 @@ class SwinUMamba2D(nn.Module):
             in_channels=self.feat_size[2],
             out_channels=self.feat_size[1],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-4],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -647,7 +647,7 @@ class SwinUMamba2D(nn.Module):
             in_channels=self.feat_size[1],
             out_channels=self.feat_size[0],
             kernel_size=3,
-            upsample_kernel_size=2,
+            upsample_kernel_size=strides[-5],
             norm_name=norm_name,
             res_block=res_block,
         )
@@ -711,10 +711,10 @@ class SwinUMamba2D(nn.Module):
             param.requires_grad = True
 
     def compute_conv_feature_map_size(self, input_size):
-        output= np.prod([self.feat_size[0], *[i//2 for i in input_size]], dtype=np.int64) #stem
+        output= np.prod([self.feat_size[0], *[i//j for i, j in zip(input_size, self.strides[0])]], dtype=np.int64) #stem
         output += np.prod([self.feat_size[0],*[i for i in input_size]], dtype=np.int64)*3 # encoder1
         input_size_0= [i for i in input_size]
-        input_size = [i//2 for i in input_size] # after stem
+        input_size = [i//j for i, j in zip(input_size, self.strides[0])] # after stem
         vssm_output, vssm_output_sizes = self.vssm_encoder.compute_conv_feature_map_size(input_size) 
         output += vssm_output
 
