@@ -1,0 +1,18 @@
+{
+    "channel_names": {
+        "0": "Endocardium",
+        "1": "Myocardium",
+        "2": "Nuclei"
+    },
+    "labels": {
+        "background": 0,
+        "myocardium": 1,
+        "endocardium": 2,
+        "lumen": 3,
+        "ecm": 4
+    },
+    "numTraining": 6,
+    "file_ending": ".nii.gz",
+    "name": "Dataset352_IF",
+    "description": "IFDataset"
+}

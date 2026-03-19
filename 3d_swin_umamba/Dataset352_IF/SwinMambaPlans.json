@@ -1,0 +1,340 @@
+{
+    "dataset_name": "Dataset352_IF",
+    "plans_name": "SwinMambaPlans",
+    "original_median_spacing_after_transp": [
+        1.0,
+        0.27000001072883606,
+        0.27000001072883606
+    ],
+    "original_median_shape_after_transp": [
+        496,
+        2048,
+        2048
+    ],
+    "image_reader_writer": "SimpleITKIO",
+    "transpose_forward": [
+        0,
+        1,
+        2
+    ],
+    "transpose_backward": [
+        0,
+        1,
+        2
+    ],
+    "configurations": {
+        "2d": {
+            "data_identifier": "SwinMambaPlans_2d",
+            "preprocessor_name": "DefaultPreprocessor",
+            "batch_size": 12,
+            "patch_size": [
+                448,
+                448
+            ],
+            "median_image_size_in_voxels": [
+                2048.0,
+                2048.0
+            ],
+            "spacing": [
+                0.27000001072883606,
+                0.27000001072883606
+            ],
+            "normalization_schemes": [
+                "ZScoreNormalization",
+                "ZScoreNormalization",
+                "ZScoreNormalization"
+            ],
+            "use_mask_for_norm": [
+                false,
+                false,
+                false
+            ],
+            "resampling_fn_data": "resample_data_or_seg_to_shape",
+            "resampling_fn_seg": "resample_data_or_seg_to_shape",
+            "resampling_fn_data_kwargs": {
+                "is_seg": false,
+                "order": 3,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_seg_kwargs": {
+                "is_seg": true,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_probabilities": "resample_data_or_seg_to_shape",
+            "resampling_fn_probabilities_kwargs": {
+                "is_seg": false,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "architecture": {
+                "network_class_name": "nnunetv2.architecetures.Mamba_architectures.SwinUMamba",
+                "arch_kwargs": {
+                    "features_per_stage": [
+                        48,
+                        96,
+                        192,
+                        384,
+                        768
+                    ],
+                    "strides": [
+                        [
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2
+                        ]
+                    ],
+                    "conv_op": "torch.nn.modules.conv.Conv2d"
+                },
+                "_kw_requires_import": [
+                    "conv_op"
+                ]
+            },
+            "batch_dice": true
+        },
+        "3d_lowres": {
+            "data_identifier": "SwinMambaPlans_3d_lowres",
+            "preprocessor_name": "DefaultPreprocessor",
+            "batch_size": 2,
+            "patch_size": [
+                80,
+                160,
+                160
+            ],
+            "median_image_size_in_voxels": [
+                117,
+                259,
+                259
+            ],
+            "spacing": [
+                4.2562194356379575,
+                2.1378120012218864,
+                2.1378120012218864
+            ],
+            "normalization_schemes": [
+                "ZScoreNormalization",
+                "ZScoreNormalization",
+                "ZScoreNormalization"
+            ],
+            "use_mask_for_norm": [
+                false,
+                false,
+                false
+            ],
+            "resampling_fn_data": "resample_data_or_seg_to_shape",
+            "resampling_fn_seg": "resample_data_or_seg_to_shape",
+            "resampling_fn_data_kwargs": {
+                "is_seg": false,
+                "order": 3,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_seg_kwargs": {
+                "is_seg": true,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_probabilities": "resample_data_or_seg_to_shape",
+            "resampling_fn_probabilities_kwargs": {
+                "is_seg": false,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "architecture": {
+                "network_class_name": "nnunetv2.architecetures.Mamba_architectures.SwinUMamba",
+                "arch_kwargs": {
+                    "features_per_stage": [
+                        48,
+                        96,
+                        192,
+                        384,
+                        768
+                    ],
+                    "strides": [
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            1,
+                            2,
+                            2
+                        ]
+                    ],
+                    "conv_op": "torch.nn.modules.conv.Conv3d"
+                },
+                "_kw_requires_import": [
+                    "conv_op"
+                ]
+            },
+            "batch_dice": false,
+            "next_stage": "3d_cascade_fullres"
+        },
+        "3d_fullres": {
+            "data_identifier": "SwinMambaPlans_3d_fullres",
+            "preprocessor_name": "DefaultPreprocessor",
+            "batch_size": 2,
+            "patch_size": [
+                48,
+                192,
+                192
+            ],
+            "median_image_size_in_voxels": [
+                496.0,
+                2048.0,
+                2048.0
+            ],
+            "spacing": [
+                1.0,
+                0.27000001072883606,
+                0.27000001072883606
+            ],
+            "normalization_schemes": [
+                "ZScoreNormalization",
+                "ZScoreNormalization",
+                "ZScoreNormalization"
+            ],
+            "use_mask_for_norm": [
+                false,
+                false,
+                false
+            ],
+            "resampling_fn_data": "resample_data_or_seg_to_shape",
+            "resampling_fn_seg": "resample_data_or_seg_to_shape",
+            "resampling_fn_data_kwargs": {
+                "is_seg": false,
+                "order": 3,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_seg_kwargs": {
+                "is_seg": true,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "resampling_fn_probabilities": "resample_data_or_seg_to_shape",
+            "resampling_fn_probabilities_kwargs": {
+                "is_seg": false,
+                "order": 1,
+                "order_z": 0,
+                "force_separate_z": null
+            },
+            "architecture": {
+                "network_class_name": "nnunetv2.architecetures.Mamba_architectures.SwinUMamba",
+                "arch_kwargs": {
+                    "features_per_stage": [
+                        48,
+                        96,
+                        192,
+                        384,
+                        768
+                    ],
+                    "strides": [
+                        [
+                            1,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            2,
+                            2,
+                            2
+                        ],
+                        [
+                            1,
+                            2,
+                            2
+                        ]
+                    ],
+                    "conv_op": "torch.nn.modules.conv.Conv3d"
+                },
+                "_kw_requires_import": [
+                    "conv_op"
+                ]
+            },
+            "batch_dice": true
+        },
+        "3d_cascade_fullres": {
+            "inherits_from": "3d_fullres",
+            "previous_stage": "3d_lowres"
+        }
+    },
+    "experiment_planner_used": "SwinMambaExperimentPlanner",
+    "label_manager": "LabelManager",
+    "foreground_intensity_properties_per_channel": {
+        "0": {
+            "max": 255.0,
+            "mean": 24.193864822387695,
+            "median": 7.0,
+            "min": 0.0,
+            "percentile_00_5": 0.0,
+            "percentile_99_5": 255.0,
+            "std": 52.8297233581543
+        },
+        "1": {
+            "max": 255.0,
+            "mean": 78.8351058959961,
+            "median": 21.0,
+            "min": 0.0,
+            "percentile_00_5": 1.0,
+            "percentile_99_5": 255.0,
+            "std": 95.26226043701172
+        },
+        "2": {
+            "max": 255.0,
+            "mean": 76.88878631591797,
+            "median": 19.0,
+            "min": 0.0,
+            "percentile_00_5": 1.0,
+            "percentile_99_5": 255.0,
+            "std": 96.67799377441406
+        }
+    }
+}
