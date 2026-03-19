@@ -116,39 +116,46 @@ def get_swin_mamba_props(spacing, patch_size, min_feature_map_size, max_numpool)
     
     pool_op_kernel_sizes = []
     num_pool_per_axis = [0] * dim
+    min_feature_map_sizes = [128,64,32,16,8]
     # print("spacing", spacing)
     # print("patch_size", patch_size)
     for r in range(5):
-        # exclude axes that we cannot pool further because of min_feature_map_size constraint
-        valid_axes_for_pool = [i for i in range(dim) if current_size[i] >= 2*min_feature_map_size]
-        if len(valid_axes_for_pool) < 1:
-            raise ValueError(f"Not enough valid axes for pooling. patch size is {patch_size}")
+        # No pooling if all the axes are alrady smaller than min feature size of that layer
+        if np.all([current_size[i]<min_feature_map_sizes[r] for i in range(dim)]):
+            pool_op_kernel_sizes.append([1] * dim)
 
-        spacings_of_axes = [current_spacing[i] for i in valid_axes_for_pool]
-        # find axis that are within factor of 2 within smallest spacing
-        min_spacing_of_valid = min(spacings_of_axes)
-        valid_axes_for_pool = [i for i in valid_axes_for_pool if current_spacing[i] / min_spacing_of_valid < 2]
+        else:
+            # exclude axes that we cannot pool further because of min_feature_map_size constraint
+            valid_axes_for_pool = [i for i in range(dim) if current_size[i] >= 2*min_feature_map_size]
+            if len(valid_axes_for_pool) < 1:  ##instead of this check if the all axes are within valid range otherwise pooling is 1
+                print(f"round {r}")
+                raise ValueError(f"Not enough valid axes for pooling. patch size is {patch_size}")
 
-        # if len(valid_axes_for_pool) == 1:
-        #     if current_size[valid_axes_for_pool[0]] >= 3 * min_feature_map_size:
-        #         pass
-        #     else:
-        #         break
-        # if len(valid_axes_for_pool) < 1:
-        #     break
+            spacings_of_axes = [current_spacing[i] for i in valid_axes_for_pool]
+            # find axis that are within factor of 2 within smallest spacing
+            min_spacing_of_valid = min(spacings_of_axes)
+            valid_axes_for_pool = [i for i in valid_axes_for_pool if current_spacing[i] / min_spacing_of_valid < 2]
 
-        other_axes = [i for i in range(dim) if i not in valid_axes_for_pool]
+            # if len(valid_axes_for_pool) == 1:
+            #     if current_size[valid_axes_for_pool[0]] >= 3 * min_feature_map_size:
+            #         pass
+            #     else:
+            #         break
+            # if len(valid_axes_for_pool) < 1:
+            #     break
 
-        pool_kernel_sizes = [0] * dim
-        for v in valid_axes_for_pool:
-            pool_kernel_sizes[v] = 2
-            num_pool_per_axis[v] += 1 
-            current_spacing[v] *= 2
-            current_size[v] = np.ceil(current_size[v] / 2)
-        for nv in other_axes:
-            pool_kernel_sizes[nv] = 1
+            other_axes = [i for i in range(dim) if i not in valid_axes_for_pool]
 
-        pool_op_kernel_sizes.append(pool_kernel_sizes)
+            pool_kernel_sizes = [0] * dim
+            for v in valid_axes_for_pool:
+                pool_kernel_sizes[v] = 2
+                num_pool_per_axis[v] += 1 
+                current_spacing[v] *= 2
+                current_size[v] = np.ceil(current_size[v] / 2)
+            for nv in other_axes:
+                pool_kernel_sizes[nv] = 1
+
+            pool_op_kernel_sizes.append(pool_kernel_sizes)
 
     # if num_pool_per_axis[0] != 5:
     #     raise ValueError("num_pool_per_axis[0] should be 5 for swin mamba")
