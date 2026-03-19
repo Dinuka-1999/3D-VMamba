@@ -11,13 +11,13 @@ from os.path import join
 
 
 class nnUNetTrainerSwinUMamba(nnUNetTrainer):
-    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
                  device: torch.device = torch.device('cuda')):
-        super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
+        super().__init__(plans, configuration, fold, dataset_json, device)
         self.initial_lr = 1e-4
         self.weight_decay = 5e-2
         self.enable_deep_supervision = True
-        self.freeze_encoder_epochs = 10
+        self.freeze_encoder_epochs = -1
         self.early_stop_epoch = 350
 
         # @staticmethod
@@ -78,8 +78,15 @@ class nnUNetTrainerSwinUMamba(nnUNetTrainer):
 
     def _get_deep_supervision_scales(self):
         dims = len(self.configuration_manager.patch_size)
+        strides_ = self.configuration_manager.pool_op_kernel_sizes[:3]
         if self.enable_deep_supervision:
-            deep_supervision_scales = [[i]*dims for i in [1,0.5,0.25,0.125]]
+            deep_supervision_scales = [[1]*dims]
+            for r in range(3):
+                b=[]
+                current_stride = strides_[r]
+                for i, k in enumerate(current_stride):
+                    b.append(deep_supervision_scales[-1][i]/k)
+                deep_supervision_scales.append(b)
         else:
             deep_supervision_scales = None  # for train and val_transforms
         return deep_supervision_scales
