@@ -318,7 +318,8 @@ class ExperimentPlanner(object):
         ref_bs = self.UNet_reference_val_corresp_bs_2d if len(spacing) == 2 else self.UNet_reference_val_corresp_bs_3d
         # we enforce a batch size of at least two, reference values may have been computed for different batch sizes.
         # Correct for that in the while loop if statement
-        while (estimate / ref_bs * 2) > reference:
+        # while (estimate / ref_bs * 2) > reference:
+        while estimate > reference:
             # print(patch_size, estimate, reference)
             # patch size seems to be too large, so we need to reduce it. Reduce the axis that currently violates the
             # aspect ratio the most (that is the largest relative to median shape)
