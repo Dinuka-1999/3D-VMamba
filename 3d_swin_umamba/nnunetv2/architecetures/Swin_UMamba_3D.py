@@ -24,6 +24,119 @@ from monai.networks.blocks.unetr_block import UnetrBasicBlock, UnetrUpBlock
 from dynamic_network_architectures.building_blocks.helper import convert_conv_op_to_dim
 
 
+class LocalGAT3D(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.proj = nn.Conv3d(in_channels, out_channels, kernel_size=1)
+        self.attn = nn.Linear(out_channels * 2, 1)
+    
+    def window_partition(self, x, window_size=7):
+        """
+        Args:   
+            x: (B, C, D, H, W)
+            window_size (int): window size
+        Returns:
+            windows: (num_windows*B, C, window_size, window_size, window_size)
+        """
+        x = x.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, C)
+        B, D, H, W, C = x.shape
+        x = x.view(B, D // window_size, window_size, H // window_size, window_size, W // window_size, window_size, C)
+        x = x.permute(0, 1, 3, 5, 2, 4, 6, 7).contiguous().view(-1, window_size, window_size, window_size, C)
+
+        x = x.permute(0, 4, 1, 2, 3).contiguous()  #(num_windows*B, C, window_size, window_size, window_size)
+        return x
+
+    def window_reverse(self,windows, window_size, D, H, W):
+        """
+        Args:
+            windows: (num_windows*B, C, window_size, window_size, window_size)
+            window_size (int): Window size
+            D (int): Depth of image
+            H (int): Height of image
+            W (int): Width of image
+        Returns:
+            x: (B, D, H, W, C)
+        """
+        windows = windows.permute(0, 2, 3, 4, 1).contiguous() #(num_windows*B, window_size, window_size, window_size, C)
+        B = int(windows.shape[0] / (D * H * W / window_size / window_size / window_size))
+        x = windows.view(B, D // window_size, H // window_size, W // window_size, window_size, window_size, window_size, -1)
+        x = x.permute(0, 1, 4, 2, 5, 3, 6, 7).contiguous().view(B, D, H, W, -1)
+        # x = x.transpose(3,4).transpose(2,3).transpose(1,2)
+        return x
+
+    def forward(self, x):
+        x = x.permute(0, 4, 1, 2, 3) # (B, C, D, H, W)
+        h = self.proj(x)
+        window_size = np.gcd.reduce([h.shape[2], h.shape[3], h.shape[4]])  # largest common factor
+        windows = self.window_partition(h, window_size=window_size)  # (num_windows*B, C, window_size, window_size, window_size)
+        # extract neighbors (3x3x3)
+        neighbors = self.extract_3d_patches(windows)  # shape: B, C, 27, window_size, window_size, window_size
+        h_center = windows.unsqueeze(2).expand_as(neighbors)
+        concat = torch.cat([h_center, neighbors], dim=1).permute(0,3,4,5,2,1)  # (B, D, H, W, 27, 2C)
+        e = self.attn(concat).permute(0, 5, 4, 1, 2, 3)
+        alpha = torch.softmax(e, dim=2)
+        out = (alpha * neighbors).sum(dim=2)
+        out = self.window_reverse(out, window_size=windows.shape[2], D=x.shape[2], H=x.shape[3], W=x.shape[4])
+        return out
+    
+    def compute_conv_feature_map_size(self, input_size):
+        output = np.int64(0)
+        output+=np.prod([self.out_channels, *input_size], dtype=np.int64) #projection
+        return output 
+
+
+    def extract_3d_patches(self, x, padding=1):
+        """
+        Extract only the 8 diagonal neighbors + center.
+
+        Input:
+            x: (B, C, D, H, W)
+
+        Output:
+            patches: (B, C, 9, D, H, W)
+        """
+        B, C, D, H, W = x.shape
+
+        # Pad once
+        x = F.pad(
+            x,
+            (padding, padding,
+            padding, padding,
+            padding, padding)
+        )
+
+        # Relative offsets:
+        offsets = [
+            (-1, -1, -1),
+            (-1, -1,  1),
+            (-1,  1, -1),
+            (-1,  1,  1),
+            ( 0,  0,  0),   # center
+            ( 1, -1, -1),
+            ( 1, -1,  1),
+            ( 1,  1, -1),
+            ( 1,  1,  1),
+        ]
+
+        neighbors = []
+
+        for dz, dy, dx in offsets:
+            patch = x[
+                :,
+                :,
+                1 + dz : 1 + dz + D,
+                1 + dy : 1 + dy + H,
+                1 + dx : 1 + dx + W,
+            ]
+            neighbors.append(patch)
+        
+        # Stack along neighbor dimension
+        patches = torch.stack(neighbors, dim=2)
+        return patches
+
+
 class PatchEmbed3D(nn.Module):
     """ Image to Patch Embedding
     Args:
@@ -533,9 +646,12 @@ class VSSMEncoder(nn.Module):
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
+        self.gnn_layers = nn.ModuleList()
         self.layers = nn.ModuleList()
         self.downsamples = nn.ModuleList()
         for i_layer in range(self.num_layers):
+            gat_layer = LocalGAT3D(in_channels=dims[i_layer], out_channels=dims[i_layer])
+            self.gnn_layers.append(gat_layer)
             layer = VSSLayer(
                 dim=dims[i_layer],
                 depth=depths[i_layer],
@@ -588,6 +704,7 @@ class VSSMEncoder(nn.Module):
         x = self.pos_drop(x)
 
         for s, layer in enumerate(self.layers):
+            x = self.gnn_layers[s](x)
             x = layer(x)
             x_ret.append(x.permute(0, 4, 1, 2, 3))
             if s < len(self.downsamples):
@@ -603,6 +720,7 @@ class VSSMEncoder(nn.Module):
         input_sizes.append(input_size)
 
         for s in range(self.num_layers):
+            output += self.gnn_layers[s].compute_conv_feature_map_size(input_size)
             output += self.layers[s].compute_conv_feature_map_size(input_size)
             if s < len(self.downsamples):
                 output += self.downsamples[s].compute_conv_feature_map_size(input_size)
