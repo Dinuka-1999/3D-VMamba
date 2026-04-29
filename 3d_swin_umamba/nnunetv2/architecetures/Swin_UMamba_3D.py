@@ -31,7 +31,7 @@ class LocalGAT3D(nn.Module):
         self.out_channels = out_channels
         self.proj = nn.Conv3d(in_channels, out_channels, kernel_size=1)
         self.attn = nn.Linear(out_channels * 2, 1)
-    
+        
     def window_partition(self, x, window_size=7):
         """
         Args:   
@@ -40,12 +40,14 @@ class LocalGAT3D(nn.Module):
         Returns:
             windows: (num_windows*B, C, window_size, window_size, window_size)
         """
-        x = x.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, C)
-        B, D, H, W, C = x.shape
-        x = x.view(B, D // window_size, window_size, H // window_size, window_size, W // window_size, window_size, C)
-        x = x.permute(0, 1, 3, 5, 2, 4, 6, 7).contiguous().view(-1, window_size, window_size, window_size, C)
-
-        x = x.permute(0, 4, 1, 2, 3).contiguous()  #(num_windows*B, C, window_size, window_size, window_size)
+        # x = x.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, C)
+        B, C, D, H, W = x.shape
+        x = x.view(B, C,
+                   D // window_size, window_size,
+                   H // window_size, window_size,
+                   W // window_size, window_size)
+        x = x.permute(0, 2, 4, 6, 1, 3, 5, 7).contiguous().view(-1, C, window_size, window_size, window_size)
+        #(num_windows*B, C, window_size, window_size, window_size)
         return x
 
     def window_reverse(self,windows, window_size, D, H, W):
@@ -59,33 +61,34 @@ class LocalGAT3D(nn.Module):
         Returns:
             x: (B, D, H, W, C)
         """
-        windows = windows.permute(0, 2, 3, 4, 1).contiguous() #(num_windows*B, window_size, window_size, window_size, C)
-        B = int(windows.shape[0] / (D * H * W / window_size / window_size / window_size))
-        x = windows.view(B, D // window_size, H // window_size, W // window_size, window_size, window_size, window_size, -1)
-        x = x.permute(0, 1, 4, 2, 5, 3, 6, 7).contiguous().view(B, D, H, W, -1)
-        # x = x.transpose(3,4).transpose(2,3).transpose(1,2)
-        return x
+        nD, nH, nW = D // window_size, H // window_size, W // window_size
+        B = windows.shape[0] // (nD * nH * nW)
+        x = windows.view(B, nD, nH, nW, -1, window_size, window_size, window_size)
+        x = x.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+        return x.view(B, D, H, W, -1)
 
     def forward(self, x):
-        x = x.permute(0, 4, 1, 2, 3) # (B, C, D, H, W)
+        x = x.permute(0, 4, 1, 2, 3).contiguous() #(B, C, D, H, W)
         h = self.proj(x)
-        window_size = np.gcd.reduce([h.shape[2], h.shape[3], h.shape[4]])  # largest common factor
-        windows = self.window_partition(h, window_size=window_size)  # (num_windows*B, C, window_size, window_size, window_size)
-        # extract neighbors (3x3x3)
-        neighbors = self.extract_3d_patches(windows)  # shape: B, C, 27, window_size, window_size, window_size
-        h_center = windows.unsqueeze(2).expand_as(neighbors)
-        concat = torch.cat([h_center, neighbors], dim=1).permute(0,3,4,5,2,1)  # (B, D, H, W, 27, 2C)
-        e = self.attn(concat).permute(0, 5, 4, 1, 2, 3)
-        alpha = torch.softmax(e, dim=2)
-        out = (alpha * neighbors).sum(dim=2)
+        window_size = math.gcd(h.shape[2], h.shape[3], h.shape[4]) 
+
+        windows = self.window_partition(h, window_size=window_size)  # D*H*W*C
+
+        neighbors = self.extract_3d_patches(windows) # D*H*W*C*9
+        h_center = windows.unsqueeze(2).expand_as(neighbors) # D*H*W*C*9
+
+        concat = torch.cat([h_center, neighbors], dim=1).permute(0,3,4,5,2,1).contiguous() # D*H*W*9*C*2
+        e = self.attn(concat) # D*H*W*9*1
+        alpha = torch.softmax(e, dim=4).permute(0, 5, 4, 1, 2, 3) # D*H*W*9*1 -> B,1,9,WS,WS,WS
+        out = (alpha * neighbors).sum(dim=2) #B,C, WS,WS,WS
         out = self.window_reverse(out, window_size=windows.shape[2], D=x.shape[2], H=x.shape[3], W=x.shape[4])
         return out
     
     def compute_conv_feature_map_size(self, input_size):
         output = np.int64(0)
-        output+=np.prod([self.out_channels, *input_size], dtype=np.int64) #projection
-        return output 
-
+        output += np.prod([self.out_channels, *input_size], dtype=np.int64)*11 #projection+out
+        output += np.prod([9, *input_size], dtype=np.int64) #attn
+        return output
 
     def extract_3d_patches(self, x, padding=1):
         """
@@ -451,7 +454,8 @@ class SS3D(nn.Module):
         
         # x_hwwh = torch.stack([x.view(B, -1, L), torch.transpose(x, dim0=3, dim1=4).contiguous().view(B, -1, L)], dim=1).view(B, 2, -1, L)
         x_hw = x.view(B, -1, L)
-        x_hd = torch.transpose(torch.transpose(x, dim0=2, dim1=3).contiguous(), dim0=3, dim1=4).contiguous().view(B, -1, L)
+        x_hd = x.permute(0, 1, 3, 4, 2).contiguous().view(B, -1, L)
+        # x_hd = torch.transpose(torch.transpose(x, dim0=2, dim1=3).contiguous(), dim0=3, dim1=4).contiguous().view(B, -1, L)
         x_wd = torch.transpose(x, dim0=2, dim1=4).contiguous().view(B, -1, L)
 
         x_hwhdwd = torch.stack([x_hw, x_hd, x_wd], dim=1).view(B, 3, -1, L) # (b, 3, d_inner, l)
