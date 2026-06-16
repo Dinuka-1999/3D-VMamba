@@ -12,8 +12,9 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 from typing import Union
-
+import os
 from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw, nnUNet_results
+from nnunetv2.ssl_paths import ssl_preprocessed, ssl_raw
 from batchgenerators.utilities.file_and_folder_operations import *
 import numpy as np
 
@@ -22,11 +23,16 @@ def find_candidate_datasets(dataset_id: int):
     startswith = "Dataset%03.0d" % dataset_id
     if nnUNet_preprocessed is not None and isdir(nnUNet_preprocessed):
         candidates_preprocessed = subdirs(nnUNet_preprocessed, prefix=startswith, join=False)
+    elif ssl_preprocessed is not None and isdir(ssl_preprocessed):
+        candidates_preprocessed = subdirs(ssl_preprocessed, prefix=startswith, join=False)
     else:
         candidates_preprocessed = []
 
     if nnUNet_raw is not None and isdir(nnUNet_raw):
         candidates_raw = subdirs(nnUNet_raw, prefix=startswith, join=False)
+    elif ssl_raw is not None and isdir(ssl_raw):
+        candidates_raw = subdirs(ssl_raw, prefix=startswith, join=False)
+        print("Found the following candidates for dataset name in ssl_raw: %s" % os.listdir(ssl_raw))
     else:
         candidates_raw = []
 

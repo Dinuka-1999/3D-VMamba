@@ -18,127 +18,122 @@ from timm.layers import DropPath, to_2tuple, trunc_normal_
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_scan_ref
 DropPath.__repr__ = lambda self: f"timm.DropPath({self.drop_prob})"
 
+from nnunetv2.utilities.pos_embed import get_3d_sincos_pos_embed
 from nnunetv2.utilities.plans_handling.plans_handler import ConfigurationManager, PlansManager
 from monai.networks.blocks.dynunet_block import UnetOutBlock
 from monai.networks.blocks.unetr_block import UnetrBasicBlock, UnetrUpBlock
 from dynamic_network_architectures.building_blocks.helper import convert_conv_op_to_dim
 
 
-class LocalGAT3D(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.proj = nn.Conv3d(in_channels, out_channels, kernel_size=1)
-        self.attn = nn.Linear(out_channels * 2, 1)
-        self.leakyRelu = nn.LeakyReLU(negative_slope=0.2)
+# class LocalGAT3D(nn.Module):
+#     def __init__(self, in_channels, out_channels):
+#         super().__init__()
+#         self.in_channels = in_channels
+#         self.out_channels = out_channels
+#         self.proj = nn.Conv3d(in_channels, out_channels, kernel_size=1)
+#         self.attn = nn.Linear(out_channels * 2, 1)
+#         self.leakyRelu = nn.LeakyReLU(negative_slope=0.2)
         
-    def window_partition(self, x, window_size=7):
-        """
-        Args:   
-            x: (B, C, D, H, W)
-            window_size (int): window size
-        Returns:
-            windows: (num_windows*B, C, window_size, window_size, window_size)
-        """
-        # x = x.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, C)
-        B, C, D, H, W = x.shape
-        x = x.view(B, C,
-                   D // window_size, window_size,
-                   H // window_size, window_size,
-                   W // window_size, window_size)
-        x = x.permute(0, 2, 4, 6, 1, 3, 5, 7).contiguous().view(-1, C, window_size, window_size, window_size)
-        #(num_windows*B, C, window_size, window_size, window_size)
-        return x
+#     def window_partition(self, x, window_size=7):
+#         """
+#         Args:   
+#             x: (B, C, D, H, W)
+#             window_size (int): window size
+#         Returns:
+#             windows: (num_windows*B, C, window_size, window_size, window_size)
+#         """
+#         # x = x.permute(0, 2, 3, 4, 1).contiguous()  # (B, D, H, W, C)
+#         B, C, D, H, W = x.shape
+#         x = x.view(B, C,
+#                    D // window_size, window_size,
+#                    H // window_size, window_size,
+#                    W // window_size, window_size)
+#         x = x.permute(0, 2, 4, 6, 1, 3, 5, 7).contiguous().view(-1, C, window_size, window_size, window_size)
+#         #(num_windows*B, C, window_size, window_size, window_size)
+#         return x
 
-    def window_reverse(self,windows, window_size, D, H, W):
-        """
-        Args:
-            windows: (num_windows*B, C, window_size, window_size, window_size)
-            window_size (int): Window size
-            D (int): Depth of image
-            H (int): Height of image
-            W (int): Width of image
-        Returns:
-            x: (B, D, H, W, C)
-        """
-        nD, nH, nW = D // window_size, H // window_size, W // window_size
-        B = windows.shape[0] // (nD * nH * nW)
-        x = windows.view(B, nD, nH, nW, -1, window_size, window_size, window_size)
-        x = x.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
-        return x.view(B, D, H, W, -1)
+#     def window_reverse(self,windows, window_size, D, H, W):
+#         """
+#         Args:
+#             windows: (num_windows*B, C, window_size, window_size, window_size)
+#             window_size (int): Window size
+#             D (int): Depth of image
+#             H (int): Height of image
+#             W (int): Width of image
+#         Returns:
+#             x: (B, D, H, W, C)
+#         """
+#         nD, nH, nW = D // window_size, H // window_size, W // window_size
+#         B = windows.shape[0] // (nD * nH * nW)
+#         x = windows.view(B, nD, nH, nW, -1, window_size, window_size, window_size)
+#         x = x.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+#         return x.view(B, D, H, W, -1)
 
-    def forward(self, x):
-        x = x.permute(0, 4, 1, 2, 3).contiguous() #(B, C, D, H, W)
-        h = self.proj(x)
-        window_size = math.gcd(h.shape[2], h.shape[3], h.shape[4]) 
+#     def forward(self, x):
+#         x = x.permute(0, 4, 1, 2, 3).contiguous() #(B, C, D, H, W)
+#         h = self.proj(x)
+#         window_size = math.gcd(h.shape[2], h.shape[3], h.shape[4]) 
 
-        windows = self.window_partition(h, window_size=window_size)  # D*H*W*C
+#         windows = self.window_partition(h, window_size=window_size)  # D*H*W*C
 
-        neighbors = self.extract_3d_patches(windows) # D*H*W*C*9
-        h_center = windows.unsqueeze(2).expand_as(neighbors) # D*H*W*C*9
+#         neighbors = self.extract_3d_patches(windows) # D*H*W*C*9
+#         h_center = windows.unsqueeze(2).expand_as(neighbors) # D*H*W*C*9
 
-        concat = torch.cat([h_center, neighbors], dim=1).permute(0,3,4,5,2,1).contiguous() # D*H*W*9*C*2
-        e = self.attn(concat) # D*H*W*9*1
-        alpha = torch.softmax(self.leakyRelu(e), dim=4).permute(0, 5, 4, 1, 2, 3) # D*H*W*9*1 -> B,1,9,WS,WS,WS
-        out = (alpha * neighbors).sum(dim=2) #B,C, WS,WS,WS
-        out = self.window_reverse(out, window_size=windows.shape[2], D=x.shape[2], H=x.shape[3], W=x.shape[4])
-        return out
+#         concat = torch.cat([h_center, neighbors], dim=1).permute(0,3,4,5,2,1).contiguous() # D*H*W*9*C*2
+#         e = self.attn(concat) # D*H*W*9*1
+#         alpha = torch.softmax(self.leakyRelu(e), dim=4).permute(0, 5, 4, 1, 2, 3) # D*H*W*9*1 -> B,1,9,WS,WS,WS
+#         out = (alpha * neighbors).sum(dim=2) #B,C, WS,WS,WS
+#         out = self.window_reverse(out, window_size=windows.shape[2], D=x.shape[2], H=x.shape[3], W=x.shape[4])
+#         return out
     
-    def compute_conv_feature_map_size(self, input_size):
-        output = np.int64(0)
-        output += np.prod([self.out_channels, *input_size], dtype=np.int64)*11 #projection+out
-        output += np.prod([9, *input_size], dtype=np.int64) #attn
-        return output
+#     def extract_3d_patches(self, x, padding=1):
+#         """
+#         Extract only the 8 diagonal neighbors + center.
 
-    def extract_3d_patches(self, x, padding=1):
-        """
-        Extract only the 8 diagonal neighbors + center.
+#         Input:
+#             x: (B, C, D, H, W)
 
-        Input:
-            x: (B, C, D, H, W)
+#         Output:
+#             patches: (B, C, 9, D, H, W)
+#         """
+#         B, C, D, H, W = x.shape
 
-        Output:
-            patches: (B, C, 9, D, H, W)
-        """
-        B, C, D, H, W = x.shape
+#         # Pad once
+#         x = F.pad(
+#             x,
+#             (padding, padding,
+#             padding, padding,
+#             padding, padding)
+#         )
 
-        # Pad once
-        x = F.pad(
-            x,
-            (padding, padding,
-            padding, padding,
-            padding, padding)
-        )
+#         # Relative offsets:
+#         offsets = [
+#             (-1, -1, -1),
+#             (-1, -1,  1),
+#             (-1,  1, -1),
+#             (-1,  1,  1),
+#             ( 0,  0,  0),   # center
+#             ( 1, -1, -1),
+#             ( 1, -1,  1),
+#             ( 1,  1, -1),
+#             ( 1,  1,  1),
+#         ]
 
-        # Relative offsets:
-        offsets = [
-            (-1, -1, -1),
-            (-1, -1,  1),
-            (-1,  1, -1),
-            (-1,  1,  1),
-            ( 0,  0,  0),   # center
-            ( 1, -1, -1),
-            ( 1, -1,  1),
-            ( 1,  1, -1),
-            ( 1,  1,  1),
-        ]
+#         neighbors = []
 
-        neighbors = []
-
-        for dz, dy, dx in offsets:
-            patch = x[
-                :,
-                :,
-                1 + dz : 1 + dz + D,
-                1 + dy : 1 + dy + H,
-                1 + dx : 1 + dx + W,
-            ]
-            neighbors.append(patch)
+#         for dz, dy, dx in offsets:
+#             patch = x[
+#                 :,
+#                 :,
+#                 1 + dz : 1 + dz + D,
+#                 1 + dy : 1 + dy + H,
+#                 1 + dx : 1 + dx + W,
+#             ]
+#             neighbors.append(patch)
         
-        # Stack along neighbor dimension
-        patches = torch.stack(neighbors, dim=2)
-        return patches
+#         # Stack along neighbor dimension
+#         patches = torch.stack(neighbors, dim=2)
+#         return patches
 
 
 class PatchEmbed3D(nn.Module):
@@ -165,11 +160,6 @@ class PatchEmbed3D(nn.Module):
         if self.norm is not None:
             x = self.norm(x)
         return x
-    def compute_conv_feature_map_size(self, input_size):
-        # assert len(input_size) == convert_conv_op_to_dim(self.encoder.conv_op), "just give the image size without color/feature channels or " \
-        #                                                                         "batch channel. Do not give input_size=(b, c, x, y(, z)). " \
-        #                                                                         "Give input_size=(x, y(, z))!"
-        return np.prod([self.output_dim, *[i//j for i,j in zip(input_size, self.proj.kernel_size)]], dtype=np.int64)
     
 
 class PatchMerging3D(nn.Module):
@@ -312,9 +302,6 @@ class PatchMerging3D(nn.Module):
             x = self.reduction_2(x)
 
         return x
-    
-    def compute_conv_feature_map_size(self, input_size):
-        return np.prod([self.dim * 2, input_size[0]//self.stride[0], input_size[1]//self.stride[1], input_size[2]//self.stride[2]], dtype=np.int64)
 
 
 class SS3D(nn.Module):
@@ -516,16 +503,6 @@ class SS3D(nn.Module):
         if self.dropout is not None:
             out = self.dropout(out)
         return out
-    
-    def compute_conv_feature_map_size(self, input_size):
-        output  = np.int64(0)
-        output += np.prod([self.d_inner * 2, *[i for i in input_size]], dtype=np.int64) # in_proj
-        conv_output_size = [j+2*((self.d_conv[i]-1)//2)-self.d_conv[i]+1 for i,j in enumerate(input_size)]
-        output += np.prod([self.d_inner, *conv_output_size], dtype=np.int64) # conv2d
-        output += np.prod([4,self.dt_rank + self.d_state * 2+self.d_inner*2, *conv_output_size], dtype=np.int64) #forward_core
-        output +=np.prod([self.d_model, *conv_output_size], dtype=np.int64) # out_proj
-        return output
-     
 
 class VSSBlock(nn.Module):
     def __init__(
@@ -545,9 +522,6 @@ class VSSBlock(nn.Module):
     def forward(self, input: torch.Tensor):
         x = input + self.drop_path(self.self_attention(self.ln_1(input)))
         return x
-    def compute_conv_feature_map_size(self, input_size):
-        return self.self_attention.compute_conv_feature_map_size(input_size)
-
 
 class VSSLayer(nn.Module):
     """ A basic layer for one stage.
@@ -614,14 +588,6 @@ class VSSLayer(nn.Module):
 
         return x
     
-    def compute_conv_feature_map_size(self, input_size):
-        output = np.int64(0)
-        for blk in self.blocks:
-            output += blk.compute_conv_feature_map_size(input_size)
-        # if self.downsample is not None:
-        #     output += self.downsample.compute_conv_feature_map_size(input_size)
-        return output
-    
 
 class VSSMEncoder(nn.Module):
     def __init__(self, patch_size=4, in_chans=3, strides = [2,2,2], depths=[2, 2, 9, 2], 
@@ -640,14 +606,15 @@ class VSSMEncoder(nn.Module):
         self.patch_size = (patch_size, patch_size, patch_size) if isinstance(patch_size, int) else patch_size
         self.patch_embed = PatchEmbed3D(patch_size=patch_size, in_chans=in_chans, embed_dim=self.embed_dim,
             norm_layer=norm_layer if patch_norm else None) ## 3D convereted
+        self.pos_embd = nn.Parameter(torch.zeros(1, 64, 64, 64, self.embed_dim), requires_grad=False)
 
         # WASTED absolute position embedding ======================
-        self.ape = False
-        if self.ape:
-            self.patches_resolution = self.patch_embed.patches_resolution
-            self.absolute_pos_embed = nn.Parameter(torch.zeros(1, *self.patches_resolution, self.embed_dim))
-            trunc_normal_(self.absolute_pos_embed, std=.02)
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        # self.ape = False
+        # if self.ape:
+        #     self.patches_resolution = self.patch_embed.patches_resolution
+        #     self.absolute_pos_embed = nn.Parameter(torch.zeros(1, *self.patches_resolution, self.embed_dim))
+        #     trunc_normal_(self.absolute_pos_embed, std=.02)
+        # self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
@@ -655,8 +622,8 @@ class VSSMEncoder(nn.Module):
         self.layers = nn.ModuleList()
         self.downsamples = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            gat_layer = LocalGAT3D(in_channels=dims[i_layer], out_channels=dims[i_layer])
-            self.gnn_layers.append(gat_layer)
+            # gat_layer = LocalGAT3D(in_channels=dims[i_layer], out_channels=dims[i_layer])
+            # self.gnn_layers.append(gat_layer)
             layer = VSSLayer(
                 dim=dims[i_layer],
                 depth=depths[i_layer],
@@ -671,6 +638,11 @@ class VSSMEncoder(nn.Module):
             self.layers.append(layer)
             if i_layer < self.num_layers - 1:
                 self.downsamples.append(PatchMerging3D(dim=dims[i_layer], norm_layer=norm_layer, strides=strides[i_layer])) # i_layer = 0,1,2
+        self.initialise_weights()
+
+    def initialise_weights(self):
+        pos_embed = get_3d_sincos_pos_embed(64, 64, 64, self.pos_embd.shape[-1])
+        self.pos_embd.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         self.apply(self._init_weights)
 
@@ -699,47 +671,100 @@ class VSSMEncoder(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
+    def random_masking(self,x, mask_ratio):
+        B,D,H,W,C = x.shape
+        L = D*H*W
+        keep_mask = int((1-mask_ratio) * L)
+
+        x_flat = x.view(B, L, C)
+
+        noise = torch.rand(B, L, device=x.device)
+        ids_shuffle = torch.argsort(noise, dim=1)
+        restore_index = torch.argsort(ids_shuffle, dim=1)
+        keep_ids = ids_shuffle[:, :keep_mask]
+
+        # mask = torch.zeros(B, L, device=x.device, dtype=x.dtype)
+        # mask.scatter_(1, keep_ids, 1.0)
+
+        # x_flat = x_flat * (1.0 - mask.unsqueeze(-1))
+
+        # x_masked = x_flat.view(B, D, H, W, C)
+        # mask = mask.view(B, D, H, W)
+
+        # return x_masked, mask
+
+        x_masked = torch.gather(x_flat, dim=1, index=keep_ids.unsqueeze(-1).repeat(1, 1, C)).view(B, D//2, H//2, W//2, C)    
+        mask = torch.ones([B, L], device=x.device)
+        mask[:, :keep_mask] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=restore_index).view(B, D, H, W)
+
+        return x_masked, mask, restore_index
+
+
     def forward(self, x):
-        x_ret = []
-        x_ret.append(x)
+        # x_ret = []
+        # x_ret.append(x)
 
         x = self.patch_embed(x)
-        if self.ape:
-            x = x + self.absolute_pos_embed
-        x = self.pos_drop(x)
+        x = x + self.pos_embd
+        x, mask, restore_index = self.random_masking(x, mask_ratio=0.5)
+        # x = self.pos_drop(x)
 
         for s, layer in enumerate(self.layers):
-            x = self.gnn_layers[s](x)
+            # x = self.gnn_layers[s](x)
             x = layer(x)
-            x_ret.append(x.permute(0, 4, 1, 2, 3))
+            # x_ret.append(x.permute(0, 4, 1, 2, 3))
             if s < len(self.downsamples):
                 x = self.downsamples[s](x)
 
-        return x_ret
-    
-    def compute_conv_feature_map_size(self, input_size):
-        input_sizes = []
-        input_sizes.append(input_size)
-        output = self.patch_embed.compute_conv_feature_map_size(input_size)
-        input_size = [i//j for i,j in zip(input_size, self.patch_size)]
-        input_sizes.append(input_size)
+        return x, mask, restore_index
 
-        for s in range(self.num_layers):
-            output += self.gnn_layers[s].compute_conv_feature_map_size(input_size)
-            output += self.layers[s].compute_conv_feature_map_size(input_size)
-            if s < len(self.downsamples):
-                output += self.downsamples[s].compute_conv_feature_map_size(input_size)
-                input_size = [i//j for i,j in zip(input_size, self.strides[s])]
-                input_sizes.append(input_size)
-        return output, input_sizes
+class SSL_decoder(nn.Module):
+    def __init__(self, in_channels=[768, 384, 192, 96], **kwargs):
+        super().__init__()
+        self.in_channels = in_channels[0]
+        self.output_channels = 1
+        self.de_mask_tokens = nn.Parameter(torch.zeros(1, 1, 96)) # (1, 1, C)
+        self.patch_embed = nn.Linear(in_channels[0], in_channels[1]) # 768 -> 384 (4,4,4)
+        self.up_conv1 = nn.ConvTranspose3d(in_channels[1], in_channels[2], kernel_size=2, stride=2) # 384 -> 192 (8,8,8)
+        self.norm1 = nn.BatchNorm3d(in_channels[2])
+        self.act = nn.ReLU()
+        self.up_conv2 = nn.ConvTranspose3d(in_channels[2], in_channels[3], kernel_size=4, stride=4) # 192 -> 96 (32,32,32)
+        self.norm2 = nn.BatchNorm3d(in_channels[3])
+        self.up_conv3 = nn.ConvTranspose3d(in_channels[3], self.output_channels, kernel_size=2, stride=2) # 96 -> 1 (128,128,128)
+        self.norm3 = nn.BatchNorm3d(self.output_channels)
+        self.final_conv = nn.Conv3d(self.output_channels, self.output_channels, kernel_size=3, padding='same') # 1 -> 1 (128,128,128)
+
+        torch.nn.init.normal_(self.de_mask_tokens, std=.02)
+
+    def de_masking(self, x, restore_index):
+        B, C, D, H, W = x.shape
+        L = D * H * W
+        x_flat = x.view(B, L, C)
+        masked_tokens = self.de_mask_tokens.repeat(B, restore_index.shape[1] + 1 -L, 1)
+        x = torch.cat([x_flat, masked_tokens], dim=1)
+        x = torch.gather(x, dim=1, index=restore_index.unsqueeze(-1).repeat(1, 1, C)).view(B, D*2, H*2, W*2, C)
+        x = x.permute(0, 4, 1, 2, 3).contiguous()
+        return x
     
-class SwinUMamba3D(nn.Module):
+    def forward(self, x, restore_index):
+        x = self.patch_embed(x)
+        x = x.permute(0, 4, 1, 2, 3).contiguous() # (b, c, d, h, w)
+        x = self.act(self.norm1(self.up_conv1(x)))
+        x = self.act(self.norm2(self.up_conv2(x)))
+        x = self.de_masking(x, restore_index)
+        x = self.act(self.norm3(self.up_conv3(x)))
+        x = self.final_conv(x)
+        return x
+    
+class SSL(nn.Module):
     def __init__(
         self,
         in_chans=1,
-        out_chans=13,
+        out_chans=1,
         feat_size=[48, 96, 192, 384, 768],
-        strides=[2,2,2,2,2],
+        strides=[2,2,2,2],
         drop_path_rate=0,
         layer_scale_init_value=1e-6,
         hidden_size: int = 768,
@@ -757,151 +782,24 @@ class SwinUMamba3D(nn.Module):
         self.feat_size = feat_size
         self.layer_scale_init_value = layer_scale_init_value
         self.strides = strides
-        self.stem = nn.Sequential(
-              nn.Conv3d(in_chans, feat_size[0], kernel_size=7, stride=strides[0], padding=3),
-              nn.InstanceNorm3d(feat_size[0], eps=1e-5, affine=True),
-        )
         self.spatial_dims = spatial_dims
-        self.vssm_encoder = VSSMEncoder(patch_size=strides[1], in_chans=feat_size[0], strides=strides[2:])
-        self.encoder1 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.in_chans,
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.encoder2 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[0],
-            out_channels=self.feat_size[1],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.encoder3 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[1],
-            out_channels=self.feat_size[2],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.encoder4 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[2],
-            out_channels=self.feat_size[3],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
 
-        self.encoder5 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[3],
-            out_channels=self.feat_size[4],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
+        self.vssm_encoder = VSSMEncoder(patch_size=strides[0], in_chans=in_chans, strides=strides[1:])
+        self.ssl_decoder = SSL_decoder()
+    
+    def build_loss(self, imgs, pred, mask):
 
-        self.decoder6 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.hidden_size,
-            out_channels=self.feat_size[4],
-            kernel_size=3,
-            upsample_kernel_size=strides[-1],
-            norm_name=norm_name,
-            res_block=res_block,
-        )
+        loss = (pred - imgs) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
-        self.decoder5 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.hidden_size,
-            out_channels=self.feat_size[3],
-            kernel_size=3,
-            upsample_kernel_size=strides[-2],
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.decoder4 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[3],
-            out_channels=self.feat_size[2],
-            kernel_size=3,
-            upsample_kernel_size=strides[-3],
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.decoder3 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[2],
-            out_channels=self.feat_size[1],
-            kernel_size=3,
-            upsample_kernel_size=strides[-4],
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.decoder2 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[1],
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            upsample_kernel_size=strides[-5],
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.decoder1 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[0],
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-
-        # deep supervision support
-        self.deep_supervision = deep_supervision
-        self.out_layers = nn.ModuleList()
-        for i in range(4):
-            self.out_layers.append(UnetOutBlock(
-                spatial_dims=spatial_dims, 
-                in_channels=self.feat_size[i], 
-                out_channels=self.out_chans
-            ))
-
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        return loss
+    
     def forward(self, x_in): 
-        x1 = self.stem(x_in) 
-        vss_outs = self.vssm_encoder(x1) 
-        enc1 = self.encoder1(x_in) 
-        enc2 = self.encoder2(vss_outs[0]) 
-        enc3 = self.encoder3(vss_outs[1]) 
-        enc4 = self.encoder4(vss_outs[2]) 
-        enc5 = self.encoder5(vss_outs[3]) 
-        enc_hidden = vss_outs[4] 
-        dec4 = self.decoder6(enc_hidden, enc5) 
-        dec3 = self.decoder5(dec4, enc4) 
-        dec2 = self.decoder4(dec3, enc3) 
-        dec1 = self.decoder3(dec2, enc2) 
-        dec0 = self.decoder2(dec1, enc1) 
-        dec_out = self.decoder1(dec0) 
-
-        if self.deep_supervision:
-            feat_out = [dec_out, dec1, dec2, dec3]
-            out = []
-            for i in range(4):
-                pred = self.out_layers[i](feat_out[i])
-                out.append(pred)
-        else:
-            out = self.out_layers[0](dec_out)
-
-        return out
+        #x = (128,128,128,1)
+        vss_outs, mask, restore_index = self.vssm_encoder(x_in) 
+        decoder_out = self.ssl_decoder(vss_outs, restore_index)
+        return decoder_out
 
     @torch.no_grad()
     def freeze_encoder(self):
@@ -913,46 +811,3 @@ class SwinUMamba3D(nn.Module):
     def unfreeze_encoder(self):
         for param in self.vssm_encoder.parameters():
             param.requires_grad = True
-
-    def compute_conv_feature_map_size(self, input_size):
-        output= np.prod([self.feat_size[0], *[i//j for i,j in zip(input_size,self.strides[0])]], dtype=np.int64) #stem
-        output += np.prod([self.feat_size[0],*[i for i in input_size]], dtype=np.int64)*3 # encoder1
-        input_size_0= [i for i in input_size]
-        input_size = [i//j for i, j in zip(input_size, self.strides[0])] # after stem
-        vssm_output, vssm_output_sizes = self.vssm_encoder.compute_conv_feature_map_size(input_size) 
-        output += vssm_output
-
-        for r in range(1,len(self.feat_size)):
-            output+=np.prod([self.feat_size[r],*[i for i in vssm_output_sizes[r-1]]], dtype=np.int64)*3 # encoder2,3,4,5
-
-        #decoders 
-        for r in range(4):
-            output+=np.prod([self.feat_size[4-r],*[i for i in vssm_output_sizes[3-r]]], dtype=np.int64)*4 # decoder6,5,4,3
-
-        output+= np.prod([self.feat_size[0],*input_size_0], dtype=np.int64)*4 + np.prod([self.feat_size[0],*input_size_0], dtype=np.int64)*3# decoder2, out_layer
-
-        if self.deep_supervision:
-            for r in range(3):
-                output+= np.prod([self.out_chans, *[i for i in vssm_output_sizes[r]]], dtype=np.int64)
-        output+= np.prod([self.out_chans, *input_size_0], dtype=np.int64) # out_layer
-        return output
-
-def get_swin_umamba_3D_from_plans(
-    plans_manager: PlansManager,
-    dataset_json: dict,
-    configuration_manager: ConfigurationManager,
-    num_input_channels: int,
-    deep_supervision: bool = True
-):
-    
-    label_manager = plans_manager.get_label_manager(dataset_json)
-
-    model = SwinUMamba3D(
-        in_chans=num_input_channels,
-        out_chans=label_manager.num_segmentation_heads,
-        feat_size=[48, 96, 192, 384, 768],
-        deep_supervision=deep_supervision,
-        hidden_size=768,
-    )
-
-    return model 
