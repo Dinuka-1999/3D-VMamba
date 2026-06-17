@@ -1,13 +1,18 @@
 [project]
-name = "nnunetv2"
-version = "2.6.4"
+name = "3D Swin UMamba"
+version = "1.0.0"
+nnUNet-version = "2.6.4"
 requires-python = ">=3.10"
-description = "nnU-Net is a framework for out-of-the box image segmentation."
+description = "nnU-Net is a framework for out-of-the box image segmentation. We designed the Swin Umamba ontop of this nnU-Net framework."
 readme = "readme.md"
 license = { file = "LICENSE" }
 authors = [
     { name = "Fabian Isensee", email = "f.isensee@dkfz-heidelberg.de"},
     { name = "Helmholtz Imaging Applied Computer Vision Lab" }
+]
+authors-modified = [
+    { name = "Dinuka Sandun", email = "dinukaudayantha1999@gmail.com"},
+    { name = "Cell Systems and Mechanobiology Lab"}
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -27,7 +32,8 @@ keywords = [
     'medical image analysis',
     'medical image segmentation',
     'nnU-Net',
-    'nnunet'
+    'Mamba',
+    'Swin UMamba'
 ]
 dependencies = [
     "torch>=2.1.2,!=2.9.*",
@@ -55,8 +61,9 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://github.com/MIC-DKFZ/nnUNet"
-repository = "https://github.com/MIC-DKFZ/nnUNet"
+nnUNethomepage = "https://github.com/MIC-DKFZ/nnUNet"
+nnUNetrepository = "https://github.com/MIC-DKFZ/nnUNet"
+3DswinUmambarepository = "https://github.com/Dinuka-1999/3D-Swin-UMamba"
 
 [project.scripts]
 nnUNetv2_plan_and_preprocess = "nnunetv2.experiment_planning.plan_and_preprocess_entrypoints:plan_and_preprocess_entry"
@@ -80,6 +87,8 @@ nnUNetv2_move_plans_between_datasets = "nnunetv2.experiment_planning.plans_for_p
 nnUNetv2_evaluate_folder = "nnunetv2.evaluation.evaluate_predictions:evaluate_folder_entry_point"
 nnUNetv2_evaluate_simple = "nnunetv2.evaluation.evaluate_predictions:evaluate_simple_entry_point"
 nnUNetv2_convert_MSD_dataset = "nnunetv2.dataset_conversion.convert_MSD_dataset:entry_point"
+nnUNetv2_SSL_preprocess = "nnunetv2.self_supervised_learning.ssl_run:preprocess_entry"
+nnUNetv2_SSL_train = "nnunetv2.self_supervised_learning.ssl_run:train_entry"
 
 [project.optional-dependencies]
 dev = [

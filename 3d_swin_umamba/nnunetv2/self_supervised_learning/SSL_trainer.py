@@ -16,7 +16,7 @@ from nnunetv2.training.data_augmentation.compute_initial_patch_size import get_p
 
 
 class MAE_Trainer(object):
-    def __init__(self, dataset_ID, num_threads):
+    def __init__(self, dataset_ID, num_threads=1):
     
         self.is_dpp = dist.is_initialized() and dist.is_available()
         self.local_rank = dist.get_rank() if self.is_dpp else 0
@@ -252,7 +252,8 @@ class MAE_Trainer(object):
         self._save_debug_information()
 
     
-    def run_training(self):
+    def run_training(self, epochs=1000):
+        self.num_epochs = epochs
         self.train_start()
 
         for epoch in range(self.current_epoch, self.num_epochs):
