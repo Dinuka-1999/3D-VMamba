@@ -1,5 +1,5 @@
 [project]
-name = "3D Swin UMamba"
+name = "3D_Swin_UMamba"
 version = "1.0.0"
 nnUNet-version = "2.6.4"
 requires-python = ">=3.10"
