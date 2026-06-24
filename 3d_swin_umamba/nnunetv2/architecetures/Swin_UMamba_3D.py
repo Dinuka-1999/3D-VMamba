@@ -540,7 +540,7 @@ class VSSBlock(nn.Module):
         super().__init__()
         self.ln_1 = norm_layer(hidden_dim)
         self.self_attention = SS3D(d_model=hidden_dim, dropout=attn_drop_rate, d_state=d_state, **kwargs)
-        self.drop_path = DropPath(drop_path)
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, input: torch.Tensor):
         x = input + self.drop_path(self.self_attention(self.ln_1(input)))

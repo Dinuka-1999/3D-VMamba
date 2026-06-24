@@ -40,6 +40,8 @@ from batchgeneratorsv2.transforms.utils.seg_to_regions import ConvertSegmentatio
 from torch import autocast, nn
 from torch import distributed as dist
 from torch._dynamo import OptimizedModule
+import torch._dynamo
+torch._dynamo.config.cache_size_limit = 64
 from torch.cuda import device_count
 from torch import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -952,7 +954,7 @@ class nnUNetTrainer(object):
 
     def on_train_epoch_start(self):
         self.network.train()
-        self.lr_scheduler.step(self.current_epoch)
+        # self.lr_scheduler.step(self.current_epoch)
         self.print_to_log_file('')
         self.print_to_log_file(f'Epoch {self.current_epoch}')
         self.print_to_log_file(
@@ -1111,6 +1113,7 @@ class nnUNetTrainer(object):
         self.logger.log('epoch_start_timestamps', time(), self.current_epoch)
 
     def on_epoch_end(self):
+        self.lr_scheduler.step(self.current_epoch)
         self.logger.log('epoch_end_timestamps', time(), self.current_epoch)
 
         self.print_to_log_file('train_loss', np.round(self.logger.my_fantastic_logging['train_losses'][-1], decimals=4))
