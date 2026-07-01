@@ -1,7 +1,6 @@
 [project]
 name = "3D_Swin_UMamba"
-version = "1.0.0"
-nnUNet-version = "2.6.4"
+version = "2.6.4"
 requires-python = ">=3.10"
 description = "nnU-Net is a framework for out-of-the box image segmentation. We designed the Swin Umamba ontop of this nnU-Net framework."
 readme = "readme.md"
@@ -10,7 +9,7 @@ authors = [
     { name = "Fabian Isensee", email = "f.isensee@dkfz-heidelberg.de"},
     { name = "Helmholtz Imaging Applied Computer Vision Lab" }
 ]
-authors-modified = [
+maintainers = [
     { name = "Dinuka Sandun", email = "dinukaudayantha1999@gmail.com"},
     { name = "Cell Systems and Mechanobiology Lab"}
 ]
@@ -65,7 +64,7 @@ dependencies = [
 [project.urls]
 nnUNethomepage = "https://github.com/MIC-DKFZ/nnUNet"
 nnUNetrepository = "https://github.com/MIC-DKFZ/nnUNet"
-3DswinUmambarepository = "https://github.com/Dinuka-1999/3D-Swin-UMamba"
+3D_swinUmambarepository = "https://github.com/Dinuka-1999/3D-Swin-UMamba"
 
 [project.scripts]
 nnUNetv2_plan_and_preprocess = "nnunetv2.experiment_planning.plan_and_preprocess_entrypoints:plan_and_preprocess_entry"
